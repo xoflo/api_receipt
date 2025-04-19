@@ -129,11 +129,15 @@ class _MyHomePageState extends State<MyHomePage> {
 
       "client_id": "21f44ae7-de63-4343-81ef-f1eb0732141c",
       "client_secret": "1bbeab92-e474-4bd1-9c9e-188e3eaff115"
+
+      Gizmo
+      "client_id": "5f742dc6-04e8-44dd-9a2a-ad9b78d2b66f",
+      "client_secret": "6cc01e9b-9b1e-4b6f-adf3-d1f3c0d062a8"
      */
 
     final body = jsonEncode({
-      "client_id": "5f742dc6-04e8-44dd-9a2a-ad9b78d2b66f",
-      "client_secret": "6cc01e9b-9b1e-4b6f-adf3-d1f3c0d062a8"
+      "client_id": "21f44ae7-de63-4343-81ef-f1eb0732141c",
+      "client_secret": "1bbeab92-e474-4bd1-9c9e-188e3eaff115"
     });
 
 
@@ -141,7 +145,7 @@ class _MyHomePageState extends State<MyHomePage> {
       'Content-Type': 'application/json',
     };
 
-    final uri = Uri.parse('https://gizmoetc.dealpos.com/api/v3/Token/OAuth2');
+    final uri = Uri.parse('https://myshop.dealpos.com/api/v3/Token/OAuth2');
     var response = await http.post(uri, body: body, headers: headers);
 
     final result = jsonDecode(response.body);

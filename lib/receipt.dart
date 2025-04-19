@@ -22,7 +22,7 @@ class Receipt {
     this.salesInvoiceNumber = "00000000${json['Number']}";
     this.date = json['Created'];
     this.dateFormatted = DateFormat('MMM d, yyyy h:mm a').format(DateTime.parse(json['Created']));
-    this.client = json['Customer']['Name'];
+    this.client = json['Customer'] == null ? "" : json['Customer']['Name'];
     this.transactionType = json['Payments'] == null ? "" : json['Payments'][0]['Method'];
     this.gross = json['Gross'];
     this.taxType = json['TaxType'];

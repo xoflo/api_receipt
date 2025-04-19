@@ -24,6 +24,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final pdf = pw.Document();
 
   int pageNumber = 1;
+  String outletName = "";
 
   @override
   Widget build(BuildContext context) {
@@ -45,106 +46,178 @@ class _HomeScreenState extends State<HomeScreen> {
                               fontWeight: FontWeight.bold),
                           textAlign: TextAlign.left)),
                 ),
-                FutureBuilder(
-                  future: generateInvoice(pageNumber),
-                  builder:
-                      (BuildContext context, AsyncSnapshot<dynamic> snapshot) {
-                    return snapshot.connectionState == ConnectionState.done
-                        ? Builder(builder: (context) {
-                            final List<dynamic> data = snapshot.data;
-
-                            return Container(
-                              height: 800,
-                              child: Padding(
-                                padding: const EdgeInsets.all(30.0),
+                Divider(),
+                Align(
+                  alignment: Alignment.center,
+                  child: FutureBuilder(
+                      future: getOutlets(),
+                      builder: (BuildContext context,
+                          AsyncSnapshot<dynamic> snapshot) {
+                        return snapshot.connectionState == ConnectionState.done
+                            ? Container(
+                                height: 50,
+                                width: 600,
                                 child: ListView.builder(
-                                    itemCount: data.length,
+                                    scrollDirection: Axis.horizontal,
+                                    itemCount: snapshot.data.length,
                                     itemBuilder: (context, i) {
-                                      final Receipt receipt =
-                                          Receipt.fromJSON(data[i]);
-
-                                      return InkWell(
-                                        child: Card(
-                                          child: Container(
-                                              child: Padding(
-                                            padding: const EdgeInsets.all(5.0),
-                                            child: Column(
-                                                crossAxisAlignment:
-                                                    CrossAxisAlignment.start,
-                                                children: [
-                                                  Text(
-                                                      "${receipt.dateFormatted}",
-                                                      style: TextStyle(
-                                                          fontWeight:
-                                                              FontWeight.bold)),
-                                                  Text(
-                                                      "S.I#: ${receipt.salesInvoiceNumber}"),
-                                                  Text("Items:"),
-                                                  Container(
-                                                    height: 30,
-                                                    child: ListView.builder(
-                                                        itemCount: receipt
-                                                            .variants.length,
-                                                        itemBuilder:
-                                                            (context, x) {
-                                                          return Text(
-                                                              "${receipt.variants[x].name}");
-                                                        }),
-                                                  )
-                                                ]),
-                                          )),
-                                        ),
-                                        onTap: () {
-                                          TextEditingController controller =
-                                              TextEditingController();
-
-                                          showDialog(
-                                              context: context,
-                                              builder: (_) => AlertDialog(
-                                                    actions: [
-                                                      TextButton(
-                                                          onPressed: () {
-                                                            printFunc(
-                                                                receipt,
-                                                                controller
-                                                                    .text);
-                                                          },
-                                                          child: Text("Save")),
-                                                      TextButton(
-                                                          onPressed: () {
-                                                            print('print');
-                                                          },
-                                                          child: Text("Print"))
-                                                    ],
-                                                    content: Container(
-                                                      height: 100,
-                                                      width: 100,
-                                                      child: TextField(
-                                                        decoration: InputDecoration(
-                                                            hintText:
-                                                                'Cashier Name'),
-                                                        controller: controller,
-                                                        maxLength: 5,
-                                                      ),
-                                                    ),
-                                                  ));
-                                        },
+                                      return Card(
+                                        color:
+                                            snapshot.data[i]["Name"] == outletName
+                                                ? Colors.blue
+                                                : null,
+                                        child: InkWell(
+                                            onTap: () {
+                                              outletName =
+                                                  "${snapshot.data[i]["Name"]}";
+                                              setState(() {});
+                                            },
+                                            child: Padding(
+                                              padding: const EdgeInsets.all(8.0),
+                                              child: Text(
+                                                  snapshot.data[i]["Name"],
+                                                  style: TextStyle(
+                                                      color: snapshot.data[i]
+                                                                  ["Name"] ==
+                                                              outletName
+                                                          ? Colors.white
+                                                          : Colors.black)),
+                                            )),
                                       );
                                     }),
-                              ),
-                            );
-                          })
-                        : Container(
-                            height: 50,
-                            width: 50,
-                            child: Center(
-                              child: CircularProgressIndicator(
-                                color: Colors.blue,
-                              ),
-                            ),
-                          );
-                  },
+                              )
+                            : Container(
+                                height: 50,
+                                width: 50,
+                                child: CircularProgressIndicator(),
+                              );
+                      }),
                 ),
+                outletName == ""
+                    ? Container(
+                        height: 100,
+                        width: 100,
+                        child: Center(
+                            child: Text("Select Outlet",
+                                style: TextStyle(color: Colors.grey))))
+                    : FutureBuilder(
+                        future: generateInvoice(pageNumber, outletName),
+                        builder: (BuildContext context,
+                            AsyncSnapshot<dynamic> snapshot) {
+                          return snapshot.connectionState ==
+                                  ConnectionState.done
+                              ? Builder(builder: (context) {
+                                  final List<dynamic> data = snapshot.data;
+
+                                  return Container(
+                                    height: 600,
+                                    width: 500,
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(30.0),
+                                      child: ListView.builder(
+                                          itemCount: data.length,
+                                          itemBuilder: (context, i) {
+                                            final Receipt receipt =
+                                                Receipt.fromJSON(data[i]);
+
+                                            return InkWell(
+                                              child: Card(
+                                                child: Container(
+                                                    height: 100 +
+                                                        (20 *
+                                                            receipt
+                                                                .variants.length
+                                                                .toDouble()),
+                                                    child: Padding(
+                                                      padding:
+                                                          const EdgeInsets.all(
+                                                              10.0),
+                                                      child: Column(
+                                                          crossAxisAlignment:
+                                                              CrossAxisAlignment
+                                                                  .start,
+                                                          children: [
+                                                            Text(
+                                                                "${receipt.dateFormatted}",
+                                                                style: TextStyle(
+                                                                    fontWeight:
+                                                                        FontWeight
+                                                                            .bold)),
+                                                            Text(
+                                                                "S.I#: ${receipt.salesInvoiceNumber}"),
+                                                            Text("Items:"),
+                                                            Container(
+                                                              height: 20 *
+                                                                  receipt
+                                                                      .variants
+                                                                      .length
+                                                                      .toDouble(),
+                                                              child: ListView
+                                                                  .builder(
+                                                                      itemCount: receipt
+                                                                          .variants
+                                                                          .length,
+                                                                      itemBuilder:
+                                                                          (context,
+                                                                              x) {
+                                                                        return Text(
+                                                                            "${receipt.variants[x].name}");
+                                                                      }),
+                                                            ),
+                                                            Text("Total Amount: ${receipt.gross}"),
+                                                          ]),
+                                                    )),
+                                              ),
+                                              onTap: () {
+                                                TextEditingController
+                                                    controller =
+                                                    TextEditingController();
+
+                                                showDialog(
+                                                    context: context,
+                                                    builder: (_) => AlertDialog(
+                                                          actions: [
+                                                            TextButton(
+                                                                onPressed: () {
+                                                                  printFunc(
+                                                                      receipt,
+                                                                      controller
+                                                                          .text);
+                                                                },
+                                                                child: Text(
+                                                                    "Save")),
+                                                          ],
+                                                          content: Container(
+                                                            height: 100,
+                                                            width: 100,
+                                                            child: TextField(
+                                                              decoration:
+                                                                  InputDecoration(
+                                                                      hintText:
+                                                                          'Cashier Name'),
+                                                              controller:
+                                                                  controller,
+                                                              maxLength: 7,
+                                                            ),
+                                                          ),
+                                                        ));
+                                              },
+                                            );
+                                          }),
+                                    ),
+                                  );
+                                })
+                              : Container(
+                                  height: 50,
+                                  width: 50,
+                                  child: Center(
+                                    child: CircularProgressIndicator(
+                                      color: Colors.blue,
+                                    ),
+                                  ),
+                                );
+                        },
+                      ),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
@@ -177,9 +250,34 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  generateInvoice(int page) async {
+  getOutlets() async {
     try {
-      final uri = Uri.parse("https://gizmoetc.dealpos.com/api/v3/Report");
+      final uri = Uri.parse("https://myshop.dealpos.com/api/v3/Outlet/p");
+
+      final headers = {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer ${widget.token}"
+      };
+
+      final body = jsonEncode(
+          {"Name": "SECTION", "Access": "All", "SuspendedStatus": "No"});
+
+      final request = await http.post(uri, headers: headers, body: body);
+
+      print(request.statusCode);
+
+      final dynamic data = await jsonDecode(request.body);
+
+      print(data);
+      return data;
+    } catch (e) {
+      print(e);
+    }
+  }
+
+  generateInvoice(int page, String outletName) async {
+    try {
+      final uri = Uri.parse("https://myshop.dealpos.com/api/v3/Report");
 
       final headers = {
         "Content-Type": "application/json",
@@ -187,7 +285,7 @@ class _HomeScreenState extends State<HomeScreen> {
       };
 
       final body = jsonEncode({
-        "Outlet": "MAIN STORE",
+        "Outlet": "$outletName",
         "From": "2025-01-01T00:00:00",
         "To": "2025-01-30T00:00:00",
         "PageNumber": "$page",
