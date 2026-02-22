@@ -1,11 +1,15 @@
 import 'package:apireceipt_new/home.dart';
 import 'package:flutter/material.dart';
+import 'package:hive_flutter/adapters.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 
 
 void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Hive.initFlutter();
+  await Hive.openBox('printedInvoices');
   runApp(const MyApp());
 
 }

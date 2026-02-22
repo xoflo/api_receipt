@@ -5,6 +5,7 @@ import 'package:date_picker_plus/date_picker_plus.dart';
 import 'package:esc_pos_utils_plus/esc_pos_utils_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:hive_flutter/adapters.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
@@ -33,7 +34,9 @@ class _HomeScreenState extends State<HomeScreen> {
   DateTime endTime = DateTime.now();
 
 
-  int paperSize = 1;
+  int paperSize = 2;
+
+  bool showUnprinted = true;
 
 
   TextEditingController cashierController = TextEditingController();
@@ -168,7 +171,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                         'Cashier Name'),
                                     controller:
                                     cashierController,
-                                    maxLength: 7,
+                                    maxLength: 15,
                                   ),
                                 ),
                                 ElevatedButton(onPressed: () async {
@@ -255,6 +258,11 @@ class _HomeScreenState extends State<HomeScreen> {
                                  } ));
                                }),
 
+                               TextButton(onPressed: () {
+                                 showUnprinted = !showUnprinted;
+                                 setState((){});
+                               }, child: Text(showUnprinted == true ? "Show All" : "Show Unprinted")),
+
                                StatefulBuilder(builder: (context, setState) {
                                  return TextButton(onPressed: () {
                                    paperSize = paperSize == 1 ? 0 : 1;
@@ -275,7 +283,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                     final Receipt receipt =
                                     Receipt.fromJSON(data[i]);
 
-                                    return InkWell(
+
+                                    return showUnprinted == true && isAlreadyPrinted(receipt.salesInvoiceNumber) ? SizedBox() : InkWell(
                                       child: Card(
                                         child: Container(
                                             height: 100 +
@@ -440,9 +449,14 @@ class _HomeScreenState extends State<HomeScreen> {
     if (conecctionStatus) {
       List<int> ticket = await generateReceipt(receipt, cashier);
       final result = await PrintBluetoothThermal.writeBytes(ticket);
-      print("print result: $result");
+
+      if (result == true) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Receipt Printed")));
+        savePrinted(receipt.salesInvoiceNumber);
+        setState(() {});
+      }
     } else {
-      //no connected
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Ensure Bluetooth is turned on and paired with Printer")));
     }
   }
 
@@ -450,7 +464,7 @@ class _HomeScreenState extends State<HomeScreen> {
     List<int> bytes = [];
 
     final profile = await CapabilityProfile.load();
-    final generator = Generator(paperSize == 1 ? PaperSize.mm80 : PaperSize.mm58, profile);
+    final generator = Generator(paperSize == 1? PaperSize.mm80 : PaperSize.mm58, profile);
     bytes += generator.reset();
 
 
@@ -628,10 +642,20 @@ class _HomeScreenState extends State<HomeScreen> {
 
 
   Stream<bool> checkConnection() {
-    return Stream.periodic(const Duration(seconds: 3))
+    return Stream.periodic(const Duration(seconds: 5))
         .asyncMap((_) async {
       return await PrintBluetoothThermal.connectionStatus;
     });
+  }
+
+  bool isAlreadyPrinted(String siNumber) {
+    final box = Hive.box('printedInvoices');
+    return box.containsKey(siNumber);
+  }
+
+  void savePrinted(String siNumber) {
+    final box = Hive.box('printedInvoices');
+    box.put(siNumber, true);
   }
 
 
