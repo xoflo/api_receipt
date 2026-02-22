@@ -504,7 +504,7 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ]);
 
-      bytes += generator.text("${product.price.toDouble().toStringAsFixed(2)}x${product.quantity}  ${product.price.toDouble() * product.quantity.toDouble()}", styles: PosStyles(align: PosAlign.right), linesAfter: 1);
+      bytes += generator.text("${product.price.toDouble().toStringAsFixed(2)}x${product.quantity}  ${product.price.toDouble() * product.quantity.toDouble()}", styles: PosStyles(align: PosAlign.right));
 
     });
 
