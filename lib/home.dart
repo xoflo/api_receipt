@@ -495,23 +495,19 @@ class _HomeScreenState extends State<HomeScreen> {
     } else {
       final bytes = await generateReceipt(receipt, cashier);
 
-      try {
 
-      } catch(e) {
-        print(e);
-      }
 
-      final result = await printerManager.send(
-        type: PrinterType.usb,
-        bytes: bytes,
-      );
+      if (selectedUsb!.name == "Generic / Text Only") {
+        final result = await printerManager.send(
+          type: PrinterType.usb,
+          bytes: bytes,
+        );
 
-      if (result == true) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Receipt Printed")));
         savePrinted(receipt.salesInvoiceNumber);
         setState(() {});
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error Printing Receipt")));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Please Select Only Designated Printer")));
       }
 
     }
@@ -546,16 +542,16 @@ class _HomeScreenState extends State<HomeScreen> {
     bytes += generator.reset();
 
 
-    bytes += generator.text('YBS SHOPWORLD, INC.', styles: PosStyles(align: PosAlign.center, bold: true));
-    bytes += generator.text('DONASCO ST. BAG-ONG LUNGSOD,', styles: PosStyles(align: PosAlign.center));
-    bytes += generator.text('TANDAG CITY, SURGAO DEL SUR', styles: PosStyles(align: PosAlign.center));
-    bytes += generator.text('VAT REG TIN: 430-923-946-000', styles: PosStyles(align: PosAlign.center));
-    bytes += generator.text('MIN: 221025020038061', styles: PosStyles(align: PosAlign.center));
-    bytes += generator.text('SERIAL NO: 50026B7783F19B54', styles: PosStyles(align: PosAlign.center));
+    bytes += generator.text('YBS SHOPWORLD, INC.', styles: PosStyles(align: PosAlign.center, bold: true, fontType: PosFontType.fontA));
+    bytes += generator.text('DONASCO ST. BAG-ONG LUNGSOD,', styles: PosStyles(align: PosAlign.center, fontType: PosFontType.fontA));
+    bytes += generator.text('TANDAG CITY, SURGAO DEL SUR', styles: PosStyles(align: PosAlign.center, fontType: PosFontType.fontA));
+    bytes += generator.text('VAT REG TIN: 430-923-946-000', styles: PosStyles(align: PosAlign.center, fontType: PosFontType.fontA));
+    bytes += generator.text('MIN: 221025020038061', styles: PosStyles(align: PosAlign.center, fontType: PosFontType.fontA));
+    bytes += generator.text('SERIAL NO: 50026B7783F19B54', styles: PosStyles(align: PosAlign.center, fontType: PosFontType.fontA));
 
     bytes += generator.emptyLines(1);
 
-    bytes += generator.text('OFFICIAL RECEIPT', styles: PosStyles(align: PosAlign.center));
+    bytes += generator.text('OFFICIAL RECEIPT', styles: PosStyles(align: PosAlign.center, fontType: PosFontType.fontA));
 
     bytes += generator.emptyLines(1);
 
@@ -710,7 +706,7 @@ class _HomeScreenState extends State<HomeScreen> {
     bytes += generator.text('ACCREG: 25A9027329942018030881', styles: PosStyles(align: PosAlign.center));
     bytes += generator.text('DATE ISSUED: JUNE 03, 2019', styles: PosStyles(align: PosAlign.center));
     bytes += generator.text('PTU: FP102022-106-0352440-00000', styles: PosStyles(align: PosAlign.center));
-    bytes += generator.text('THIS SERVES AS AN OFFICIAL RECEIPT', styles: PosStyles(align: PosAlign.center, fontType: PosFontType.fontB));
+    bytes += generator.text('THIS SERVES AS AN OFFICIAL RECEIPT', styles: PosStyles(align: PosAlign.center, fontType: PosFontType.fontA));
 
 
     bytes += generator.feed(3);
