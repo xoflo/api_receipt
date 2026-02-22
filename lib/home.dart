@@ -1,0 +1,640 @@
+import 'dart:io';
+
+import 'package:apireceipt_new/receipt.dart';
+import 'package:date_picker_plus/date_picker_plus.dart';
+import 'package:esc_pos_utils_plus/esc_pos_utils_plus.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
+import 'package:intl/intl.dart';
+import 'package:path_provider/path_provider.dart';
+import 'dart:convert';
+import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
+
+
+
+class HomeScreen extends StatefulWidget {
+  const HomeScreen({super.key, required this.token});
+
+  final String token;
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+
+
+  int pageNumber = 1;
+  String outletName = "";
+
+
+  DateTime startTime = DateTime.now();
+  DateTime endTime = DateTime.now();
+
+
+  int paperSize = 1;
+
+
+  TextEditingController cashierController = TextEditingController();
+
+
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: SingleChildScrollView(
+        scrollDirection: Axis.vertical,
+        child: StatefulBuilder(
+          builder:
+              (BuildContext context, void Function(void Function()) setState) {
+            return Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(20.0),
+                  child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text("Receipt List",
+                          style: TextStyle(
+                              fontSize: 40,
+                              color: Colors.black,
+                              fontWeight: FontWeight.bold),
+                          textAlign: TextAlign.left)),
+                ),
+                Divider(),
+                Padding(
+                  padding: const EdgeInsets.all(15.0),
+                  child: Align(
+                    alignment: Alignment.center,
+                    child: FutureBuilder(
+                        future: getOutlets(),
+                        builder: (BuildContext context,
+                            AsyncSnapshot<dynamic> snapshot) {
+                          if (!snapshot.hasData) {
+                            return Center(
+                              child: Container(
+                                height: 50,
+                                width: 50,
+                                child: CircularProgressIndicator(
+
+                                ),
+                              ),
+                            );
+                          }
+
+                          return snapshot.connectionState == ConnectionState
+                              .done
+                              ? Container(
+                            height: 50,
+                            width: 600,
+                            child: ListView.builder(
+                                scrollDirection: Axis.horizontal,
+                                itemCount: snapshot.data!.length,
+                                itemBuilder: (context, i) {
+                                  return Card(
+                                    color:
+                                    snapshot.data[i]["Name"] == outletName
+                                        ? Colors.blue
+                                        : null,
+                                    child: InkWell(
+                                        onTap: () {
+                                          outletName =
+                                          "${snapshot.data[i]["Name"]}";
+                                          setState(() {});
+                                        },
+                                        child: Padding(
+                                          padding: const EdgeInsets.all(8.0),
+                                          child: Text(
+                                              snapshot.data[i]["Name"],
+                                              style: TextStyle(
+                                                  color: snapshot.data[i]
+                                                  ["Name"] ==
+                                                      outletName
+                                                      ? Colors.white
+                                                      : Colors.black)),
+                                        )),
+                                  );
+                                }),
+                          )
+                              : Container(
+                            height: 50,
+                            width: 50,
+                            child: CircularProgressIndicator(),
+                          );
+                        }),
+                  ),
+                ),
+                outletName == ""
+                    ? Container(
+                    height: 100,
+                    width: 100,
+                    child: Center(
+                        child: Text("Select Outlet",
+                            style: TextStyle(color: Colors.grey))))
+                    : FutureBuilder(
+                  future: generateInvoice(
+                      pageNumber, outletName, startTime, endTime),
+                  builder: (BuildContext context,
+                      AsyncSnapshot<dynamic> snapshot) {
+                    return snapshot.connectionState ==
+                        ConnectionState.waiting
+                        ? Container(
+                      height: 50,
+                      width: 50,
+                      child: Center(
+                        child: CircularProgressIndicator(
+                          color: Colors.blue,
+                        ),
+                      ),
+                    ) : Builder(builder: (context) {
+                      final List<dynamic> data = snapshot.data;
+
+
+                      return Column(
+                        children: [
+                          SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: Row(
+                              spacing: 10,
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Container(
+                                  height: 50,
+                                  width: 150,
+                                  child: TextField(
+                                    decoration:
+                                    InputDecoration(
+                                        hintText:
+                                        'Cashier Name'),
+                                    controller:
+                                    cashierController,
+                                    maxLength: 7,
+                                  ),
+                                ),
+                                ElevatedButton(onPressed: () async {
+                                  final date = await showRangePickerDialog(
+                                    context: context,
+                                    minDate: DateTime(2021, 1, 1),
+                                    maxDate: DateTime(2050, 12, 31),
+                                  );
+
+                                  if (date?.start != null &&
+                                      date?.end != null) {
+                                    startTime = date!.start;
+                                    endTime = date!.end;
+
+                                    setState(() {
+
+                                    });
+                                  }
+                                },
+                                    child: Text(startTime == null
+                                        ? "Filter Date"
+                                        : "${DateFormat.yMMMMd().format(
+                                        startTime)} - ${DateFormat
+                                        .yMMMMd()
+                                        .format(endTime!)}")),
+
+                               StatefulBuilder(builder: (context, setState) {
+                                 return ElevatedButton(onPressed: () {
+                                   showDialog(context: context, builder: (_) => AlertDialog(
+                                     content: SizedBox(
+                                       height: 400,
+                                       width: 300,
+                                       child: FutureBuilder(
+                                         future: PrintBluetoothThermal.pairedBluetooths,
+                                         builder: (BuildContext context, AsyncSnapshot<List<BluetoothInfo>> devices) {
+                                           return devices.connectionState == ConnectionState.done ? Container(
+                                             height: 300,
+                                             child: devices.data!.isEmpty ? Center(
+                                               child: Text(
+                                                 "Ensure Bluetooth is turned on and paired with Printer",
+                                                 textAlign: TextAlign.center,),
+                                             ) : ListView.builder(
+                                                 itemCount: devices.data!.length,
+                                                 itemBuilder: (context, i) {
+                                               return ListTile(
+                                                 title: Text(devices.data![i].name),
+                                                 onTap: () async {
+                                                   showDialog(
+                                                       barrierDismissible: false,
+                                                       context: context, builder: (_) => AlertDialog(
+                                                     content: Container(
+                                                       height: 100,
+                                                       width: 100,
+                                                       child: Center(
+                                                         child: CircularProgressIndicator(),
+                                                       ),
+                                                     ),
+                                                   ));
+
+                                                   await PrintBluetoothThermal.disconnect;
+                                                   await PrintBluetoothThermal.connect(macPrinterAddress: devices.data![i].macAdress);
+
+                                                   Navigator.pop(context);
+                                                   Navigator.pop(context);
+
+                                                   ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Connected to ${devices.data![i].name}")));
+                                                 },
+                                               );
+                                             }),
+                                           ) : Center(
+                                             child: Container(
+                                               height: 50,
+                                               width: 50,
+                                               child: CircularProgressIndicator(),
+                                             ),
+                                           );
+                                         },
+                                       ),
+                                     ),
+                                   ));
+                                 }, child: StreamBuilder(stream: checkConnection(),
+                                 builder: (BuildContext context, AsyncSnapshot<bool> snapshot) {
+                                   return Text(snapshot.data == true ? "Connected" : "Select Printer");
+                                 } ));
+                               }),
+
+                               StatefulBuilder(builder: (context, setState) {
+                                 return TextButton(onPressed: () {
+                                   paperSize = paperSize == 1 ? 0 : 1;
+                                   setState(() {});
+                                 }, child: Text("Paper Size: ${paperSize == 1 ? "mm80" : "mm58"}"));
+                               })
+                              ],
+                            ),
+                          ),
+                          Container(
+                            height: 600,
+                            width: 500,
+                            child: Padding(
+                              padding: const EdgeInsets.all(30.0),
+                              child: ListView.builder(
+                                  itemCount: data.length,
+                                  itemBuilder: (context, i) {
+                                    final Receipt receipt =
+                                    Receipt.fromJSON(data[i]);
+
+                                    return InkWell(
+                                      child: Card(
+                                        child: Container(
+                                            height: 100 +
+                                                (20 *
+                                                    receipt
+                                                        .variants.length
+                                                        .toDouble()),
+                                            child: Padding(
+                                              padding:
+                                              const EdgeInsets.all(
+                                                  10.0),
+                                              child: Column(
+                                                  crossAxisAlignment:
+                                                  CrossAxisAlignment
+                                                      .start,
+                                                  children: [
+                                                    Text(
+                                                        "${receipt
+                                                            .dateFormatted}",
+                                                        style: TextStyle(
+                                                            fontWeight:
+                                                            FontWeight
+                                                                .bold)),
+                                                    Text(
+                                                        "S.I#: ${receipt
+                                                            .salesInvoiceNumber}"),
+                                                    Text("Items:"),
+                                                    Container(
+                                                      height: 20 *
+                                                          receipt
+                                                              .variants
+                                                              .length
+                                                              .toDouble(),
+                                                      child: ListView
+                                                          .builder(
+                                                          itemCount: receipt
+                                                              .variants
+                                                              .length,
+                                                          itemBuilder:
+                                                              (context,
+                                                              x) {
+                                                            return Text(
+                                                                "${receipt
+                                                                    .variants[x]
+                                                                    .name}");
+                                                          }),
+                                                    ),
+                                                    Text(
+                                                        "Total Amount: ${receipt
+                                                            .gross}"),
+                                                  ]),
+                                            )),
+                                      ),
+                                      onTap: () {
+                                        printReceipt(receipt, cashierController.text);
+                                      },
+                                    );
+                                  }),
+                            ),
+                          ),
+                        ],
+                      );
+                    });
+                  },
+                ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    IconButton(
+                        onPressed: () {
+                          if (pageNumber == 1) {
+                            return;
+                          } else {
+                            pageNumber -= 1;
+                            setState(() {});
+                          }
+                        },
+                        icon: Icon(Icons.arrow_left)),
+                    SizedBox(width: 5),
+                    Text("$pageNumber"),
+                    SizedBox(width: 5),
+                    IconButton(
+                        onPressed: () {
+                          pageNumber += 1;
+                          setState(() {});
+                        },
+                        icon: Icon(Icons.arrow_right)),
+                  ],
+                )
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Future getOutlets() async {
+    try {
+      final uri = Uri.parse(
+          'https://myshop.dealpos.com/api/v3/Outlet'
+      ).replace(queryParameters: {
+        'Access': 'All',
+        'Suspended': 'false',
+      });
+
+      final response = await http.get(
+        uri,
+        headers: {
+          'Authorization': 'Bearer ${widget.token}',
+          'Accept': 'application/json',
+        },
+      );
+
+      print(response.statusCode);
+
+      final dynamic data = await jsonDecode(response.body);
+
+      print(data);
+
+      return data;
+    } catch (e) {
+      print(e);
+    }
+  }
+
+  generateInvoice(int page, String outletName, DateTime startTime,
+      DateTime endTime) async {
+    try {
+      final uri = Uri.parse("https://myshop.dealpos.com/api/v3/Report");
+
+      final headers = {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer ${widget.token}"
+      };
+
+      final body = jsonEncode({
+        "Outlet": "$outletName",
+        "From": startTime.toIso8601String(),
+        "To": endTime.toIso8601String(),
+        "PageNumber": "$page",
+        "PageSize": "10"
+      });
+
+      final request = await http.post(uri, headers: headers, body: body);
+
+      print(request.statusCode);
+
+      final dynamic data = await jsonDecode(request.body);
+
+      print(data["Data"]);
+
+      return await data["Data"];
+    } catch (e) {
+      print(e);
+    }
+  }
+
+
+  Future<void> printReceipt(Receipt receipt, String cashier) async {
+    bool conecctionStatus = await PrintBluetoothThermal.connectionStatus;
+    if (conecctionStatus) {
+      List<int> ticket = await generateReceipt(receipt, cashier);
+      final result = await PrintBluetoothThermal.writeBytes(ticket);
+      print("print result: $result");
+    } else {
+      //no connected
+    }
+  }
+
+  Future<List<int>> generateReceipt(Receipt receipt, String cashier) async {
+    List<int> bytes = [];
+
+    final profile = await CapabilityProfile.load();
+    final generator = Generator(paperSize == 1 ? PaperSize.mm80 : PaperSize.mm58, profile);
+    bytes += generator.reset();
+
+
+    bytes += generator.text('YBS SHOPWORLD, INC.', styles: PosStyles(align: PosAlign.center, bold: true));
+    bytes += generator.text('DONASCO ST. BAG-ONG LUNGSOD,', styles: PosStyles(align: PosAlign.center));
+    bytes += generator.text('TANDAG CITY, SURGAO DEL SUR', styles: PosStyles(align: PosAlign.center));
+    bytes += generator.text('VAT REG TIN: 430-923-946-000', styles: PosStyles(align: PosAlign.center));
+    bytes += generator.text('MIN: 221025020038061', styles: PosStyles(align: PosAlign.center));
+    bytes += generator.text('SERIAL NO: 50026B7783F19B54', styles: PosStyles(align: PosAlign.center));
+
+    bytes += generator.emptyLines(1);
+
+    bytes += generator.text('OFFICIAL RECEIPT', styles: PosStyles(align: PosAlign.center));
+
+    bytes += generator.emptyLines(1);
+
+    bytes += generator.text('S.I#: ${receipt.salesInvoiceNumber}', styles: PosStyles(align: PosAlign.left));
+    bytes += generator.text('Cashier: $cashier', styles: PosStyles(align: PosAlign.left));
+
+    bytes += generator.text('Date: ${receipt.dateFormatted}', styles: PosStyles(align: PosAlign.left));
+    bytes += generator.text('TID: ${receipt.tid}  Trans type: ${receipt.transactionType}', styles: PosStyles(align: PosAlign.left));
+    bytes += generator.text('Client: ${receipt.client}', styles: PosStyles(align: PosAlign.left));
+
+    bytes += generator.emptyLines(2);
+
+    receipt.variants.forEach((product) {
+      bytes += generator.row([
+        PosColumn(
+          text: product.name,
+          width: 8,
+          styles: PosStyles(align: PosAlign.left),
+        ),
+        PosColumn(
+          text: 'v',
+          width: 4,
+          styles: PosStyles(align: PosAlign.right),
+        ),
+      ]);
+
+      bytes += generator.text("${product.price}x${product.quantity}  ${product.price.toDouble() * product.quantity.toDouble()}", styles: PosStyles(align: PosAlign.right), linesAfter: 1);
+
+    });
+
+
+    bytes += generator.emptyLines(2);
+
+    bytes += generator.row([
+      PosColumn(
+        text: 'TOTAL AMOUNT:',
+        width: 8,
+        styles: PosStyles(align: PosAlign.left),
+      ),
+      PosColumn(
+        text: receipt.gross.toString(),
+        width: 4,
+        styles: PosStyles(align: PosAlign.right),
+      ),
+    ]);
+
+    bytes += generator.row([
+      PosColumn(
+        text: 'TENDER AMOUNT:',
+        width: 8,
+        styles: PosStyles(align: PosAlign.left),
+      ),
+      PosColumn(
+        text: receipt.gross.toString(),
+        width: 4,
+        styles: PosStyles(align: PosAlign.right),
+      ),
+    ]);
+
+    bytes += generator.row([
+      PosColumn(
+        text: 'CHANGE AMOUNT:',
+        width: 8,
+        styles: PosStyles(align: PosAlign.left),
+      ),
+      PosColumn(
+        text: '000.00',
+        width: 4,
+        styles: PosStyles(align: PosAlign.right),
+      ),
+    ]);
+
+    bytes += generator.emptyLines(2);
+
+    bytes += generator.row([
+      PosColumn(
+        text: 'VATABLE SALES:',
+        width: 8,
+        styles: PosStyles(align: PosAlign.left),
+      ),
+      PosColumn(
+        text: receipt.vatableSales,
+        width: 4,
+        styles: PosStyles(align: PosAlign.right),
+      ),
+    ]);
+
+    bytes += generator.row([
+      PosColumn(
+        text: 'VAT AMOUNT:',
+        width: 8,
+        styles: PosStyles(align: PosAlign.left),
+      ),
+      PosColumn(
+        text: receipt.vatAmount,
+        width: 4,
+        styles: PosStyles(align: PosAlign.right),
+      ),
+    ]);
+
+    bytes += generator.row([
+      PosColumn(
+        text: 'NON-VATABLE SALES:',
+        width: 8,
+        styles: PosStyles(align: PosAlign.left),
+      ),
+      PosColumn(
+        text: '000.00',
+        width: 4,
+        styles: PosStyles(align: PosAlign.right),
+      ),
+    ]);
+
+    bytes += generator.row([
+      PosColumn(
+        text: 'VAT-EXEMPT SALES:',
+        width: 8,
+        styles: PosStyles(align: PosAlign.left),
+      ),
+      PosColumn(
+        text: '000.00',
+        width: 4,
+        styles: PosStyles(align: PosAlign.right),
+      ),
+    ]);
+
+    bytes += generator.row([
+      PosColumn(
+        text: 'ZERO-RATED SALES:',
+        width: 8,
+        styles: PosStyles(align: PosAlign.left),
+      ),
+      PosColumn(
+        text: '000.00',
+        width: 4,
+        styles: PosStyles(align: PosAlign.right),
+      ),
+    ]);
+
+    bytes += generator.emptyLines(2);
+
+    bytes += generator.text('NAME: _______________________', styles: PosStyles(align: PosAlign.center));
+    bytes += generator.text('ADDRESS: _______________________', styles: PosStyles(align: PosAlign.center));
+    bytes += generator.text('TIN: _______________________', styles: PosStyles(align: PosAlign.center));
+
+
+    bytes += generator.emptyLines(1);
+
+    bytes += generator.text('POS45 ENTERPRISES', styles: PosStyles(align: PosAlign.center));
+    bytes += generator.text('BRGY. VALENCIA AURORA BLVD QC.', styles: PosStyles(align: PosAlign.center));
+    bytes += generator.text('NON-VAT REG TIN: 902-732-994-000', styles: PosStyles(align: PosAlign.center));
+    bytes += generator.text('ACCREG: 25A9027329942018030881', styles: PosStyles(align: PosAlign.center));
+    bytes += generator.text('DATE ISSUED: JUNE 03, 2019', styles: PosStyles(align: PosAlign.center));
+    bytes += generator.text('PTU: FP102022-106-0352440-00000', styles: PosStyles(align: PosAlign.center));
+    bytes += generator.text('THIS SERVES AS AN OFFICIAL RECEIPT', styles: PosStyles(align: PosAlign.center, height: PosTextSize.size1, width: PosTextSize.size1, fontType: PosFontType.fontB));
+
+
+    bytes += generator.feed(3);
+    // bytes += generator.cut();
+    return bytes;
+  }
+
+
+  Stream<bool> checkConnection() {
+    return Stream.periodic(const Duration(seconds: 3))
+        .asyncMap((_) async {
+      return await PrintBluetoothThermal.connectionStatus;
+    });
+  }
+
+
+
+
+}
