@@ -1,5 +1,4 @@
-import 'dart:io';
-
+import 'dart:async';
 import 'package:apireceipt_new/receipt.dart';
 import 'package:date_picker_plus/date_picker_plus.dart';
 import 'package:esc_pos_utils_plus/esc_pos_utils_plus.dart';
@@ -8,9 +7,9 @@ import 'package:flutter/services.dart';
 import 'package:hive_flutter/adapters.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
-import 'package:path_provider/path_provider.dart';
 import 'dart:convert';
 import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
+import 'package:thermal_printer/thermal_printer.dart';
 
 
 
@@ -42,341 +41,387 @@ class _HomeScreenState extends State<HomeScreen> {
   TextEditingController cashierController = TextEditingController();
 
 
+  final printerManager = PrinterManager.instance;
+  List<PrinterDevice> usbDevices = [];
+  PrinterDevice? selectedUsb;
+
+
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: SingleChildScrollView(
         scrollDirection: Axis.vertical,
-        child: StatefulBuilder(
-          builder:
-              (BuildContext context, void Function(void Function()) setState) {
-            return Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.all(20.0),
-                  child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text("Receipt List",
-                          style: TextStyle(
-                              fontSize: 40,
-                              color: Colors.black,
-                              fontWeight: FontWeight.bold),
-                          textAlign: TextAlign.left)),
-                ),
-                Divider(),
-                Padding(
-                  padding: const EdgeInsets.all(15.0),
-                  child: Align(
-                    alignment: Alignment.center,
-                    child: FutureBuilder(
-                        future: getOutlets(),
-                        builder: (BuildContext context,
-                            AsyncSnapshot<dynamic> snapshot) {
-                          if (!snapshot.hasData) {
-                            return Center(
-                              child: Container(
+        child: FutureBuilder(
+          future:
+          scanUsb(), builder: (BuildContext context, AsyncSnapshot<void> snapshot) {
+
+            return snapshot.connectionState == ConnectionState.done ? StatefulBuilder(
+              builder:
+                  (BuildContext context, void Function(void Function()) setState) {
+                return Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.all(20.0),
+                      child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text("Sale List",
+                              style: TextStyle(
+                                  fontSize: 40,
+                                  color: Colors.black,
+                                  fontWeight: FontWeight.bold),
+                              textAlign: TextAlign.left)),
+                    ),
+                    Divider(),
+                    Padding(
+                      padding: const EdgeInsets.all(15.0),
+                      child: Align(
+                        alignment: Alignment.center,
+                        child: FutureBuilder(
+                            future: getOutlets(),
+                            builder: (BuildContext context,
+                                AsyncSnapshot<dynamic> snapshot) {
+                              if (!snapshot.hasData) {
+                                return Center(
+                                  child: Container(
+                                    height: 50,
+                                    width: 50,
+                                    child: CircularProgressIndicator(
+
+                                    ),
+                                  ),
+                                );
+                              }
+
+                              return snapshot.connectionState == ConnectionState
+                                  .done
+                                  ? Container(
+                                height: 50,
+                                width: 600,
+                                child: ListView.builder(
+                                    scrollDirection: Axis.horizontal,
+                                    itemCount: snapshot.data!.length,
+                                    itemBuilder: (context, i) {
+                                      return Card(
+                                        color:
+                                        snapshot.data[i]["Name"] == outletName
+                                            ? Colors.blue
+                                            : null,
+                                        child: InkWell(
+                                            onTap: () {
+                                              outletName =
+                                              "${snapshot.data[i]["Name"]}";
+                                              setState(() {});
+                                            },
+                                            child: Padding(
+                                              padding: const EdgeInsets.all(8.0),
+                                              child: Text(
+                                                  snapshot.data[i]["Name"],
+                                                  style: TextStyle(
+                                                      color: snapshot.data[i]
+                                                      ["Name"] ==
+                                                          outletName
+                                                          ? Colors.white
+                                                          : Colors.black)),
+                                            )),
+                                      );
+                                    }),
+                              )
+                                  : Container(
                                 height: 50,
                                 width: 50,
-                                child: CircularProgressIndicator(
+                                child: CircularProgressIndicator(),
+                              );
+                            }),
+                      ),
+                    ),
+                    outletName == ""
+                        ? Container(
+                        height: 100,
+                        width: 100,
+                        child: Center(
+                            child: Text("Select Outlet",
+                                style: TextStyle(color: Colors.grey))))
+                        : FutureBuilder(
+                      future: generateInvoice(
+                          pageNumber, outletName, startTime, endTime),
+                      builder: (BuildContext context,
+                          AsyncSnapshot<dynamic> snapshot) {
+                        return snapshot.connectionState ==
+                            ConnectionState.waiting
+                            ? Container(
+                          height: 50,
+                          width: 50,
+                          child: Center(
+                            child: CircularProgressIndicator(
+                              color: Colors.blue,
+                            ),
+                          ),
+                        ) : Builder(builder: (context) {
+                          final List<dynamic> data = snapshot.data;
 
+
+                          return Column(
+                            children: [
+                              SingleChildScrollView(
+                                scrollDirection: Axis.horizontal,
+                                child: Row(
+                                  spacing: 10,
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Container(
+                                      height: 50,
+                                      width: 150,
+                                      child: TextField(
+                                        decoration:
+                                        InputDecoration(
+                                            hintText:
+                                            'Cashier Name'),
+                                        controller:
+                                        cashierController,
+                                        maxLength: 15,
+                                      ),
+                                    ),
+                                    ElevatedButton(onPressed: () async {
+                                      final date = await showRangePickerDialog(
+                                        context: context,
+                                        minDate: DateTime(2021, 1, 1),
+                                        maxDate: DateTime(2050, 12, 31),
+                                      );
+
+                                      if (date?.start != null &&
+                                          date?.end != null) {
+                                        startTime = date!.start;
+                                        endTime = date!.end;
+
+                                        setState(() {
+
+                                        });
+                                      }
+                                    },
+                                        child: Text(startTime == null
+                                            ? "Filter Date"
+                                            : "${DateFormat.yMMMMd().format(
+                                            startTime)} - ${DateFormat
+                                            .yMMMMd()
+                                            .format(endTime!)}")),
+
+                                    StatefulBuilder(builder: (context, setState) {
+                                      return ElevatedButton(onPressed: () {
+                                        showDialog(context: context, builder: (_) => AlertDialog(
+                                          content: Container(
+                                              height: 400,
+                                              width: 400,
+                                              child: ListView.builder(
+                                                  itemCount: usbDevices.length,
+                                                  itemBuilder: (context, i) {
+                                                return ListTile(
+                                                  title: Text(usbDevices[i].name),
+                                                  onTap: () async {
+                                                    await selectPrinter(usbDevices[i]);
+                                                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Connected to ${usbDevices[i].name}")));
+                                                    Navigator.pop(context);
+                                                  },
+                                                );
+                                              })
+                                          ),
+                                        ));
+                                      }, child: Text(selectedUsb == null ? "Select Printer" : selectedUsb!.name));
+
+                                    }),
+
+
+                                    /*
+                                   StatefulBuilder(builder: (context, setState) {
+                                   return ElevatedButton(onPressed: () {
+                                     showDialog(context: context, builder: (_) => AlertDialog(
+                                       content: SizedBox(
+                                         height: 400,
+                                         width: 300,
+                                         child: FutureBuilder(
+                                           future: PrintBluetoothThermal.pairedBluetooths,
+                                           builder: (BuildContext context, AsyncSnapshot<List<BluetoothInfo>> devices) {
+                                             return devices.connectionState == ConnectionState.done ? Container(
+                                               height: 300,
+                                               child: devices.data!.isEmpty ? Center(
+                                                 child: Text(
+                                                   "Ensure Bluetooth is turned on and paired with Printer",
+                                                   textAlign: TextAlign.center,),
+                                               ) : ListView.builder(
+                                                   itemCount: devices.data!.length,
+                                                   itemBuilder: (context, i) {
+                                                 return ListTile(
+                                                   title: Text(devices.data![i].name),
+                                                   onTap: () async {
+                                                     showDialog(
+                                                         barrierDismissible: false,
+                                                         context: context, builder: (_) => AlertDialog(
+                                                       content: Container(
+                                                         height: 100,
+                                                         width: 100,
+                                                         child: Center(
+                                                           child: CircularProgressIndicator(),
+                                                         ),
+                                                       ),
+                                                     ));
+
+                                                     await PrintBluetoothThermal.disconnect;
+                                                     await PrintBluetoothThermal.connect(macPrinterAddress: devices.data![i].macAdress);
+
+                                                     Navigator.pop(context);
+                                                     Navigator.pop(context);
+
+                                                     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Connected to ${devices.data![i].name}")));
+                                                   },
+                                                 );
+                                               }),
+                                             ) : Center(
+                                               child: Container(
+                                                 height: 50,
+                                                 width: 50,
+                                                 child: CircularProgressIndicator(),
+                                               ),
+                                             );
+                                           },
+                                         ),
+                                       ),
+                                     ));
+                                   }, child: StreamBuilder(stream: checkConnection(),
+                                   builder: (BuildContext context, AsyncSnapshot<bool> snapshot) {
+                                     return Text(snapshot.data == true ? "Connected" : "Select Printer");
+                                   } ));
+                                 }),
+
+                                  */
+
+
+
+                                    TextButton(onPressed: () {
+                                      showUnprinted = !showUnprinted;
+                                      setState((){});
+                                    }, child: Text(showUnprinted == true ? "Show All" : "Show Unprinted")),
+
+                                    StatefulBuilder(builder: (context, setState) {
+                                      return TextButton(onPressed: () {
+                                        paperSize = paperSize == 1 ? 0 : 1;
+                                        setState(() {});
+                                      }, child: Text("Paper Size: ${paperSize == 1 ? "mm72" : "mm58"}"));
+                                    })
+                                  ],
                                 ),
                               ),
-                            );
-                          }
-
-                          return snapshot.connectionState == ConnectionState
-                              .done
-                              ? Container(
-                            height: 50,
-                            width: 600,
-                            child: ListView.builder(
-                                scrollDirection: Axis.horizontal,
-                                itemCount: snapshot.data!.length,
-                                itemBuilder: (context, i) {
-                                  return Card(
-                                    color:
-                                    snapshot.data[i]["Name"] == outletName
-                                        ? Colors.blue
-                                        : null,
-                                    child: InkWell(
-                                        onTap: () {
-                                          outletName =
-                                          "${snapshot.data[i]["Name"]}";
-                                          setState(() {});
-                                        },
-                                        child: Padding(
-                                          padding: const EdgeInsets.all(8.0),
-                                          child: Text(
-                                              snapshot.data[i]["Name"],
-                                              style: TextStyle(
-                                                  color: snapshot.data[i]
-                                                  ["Name"] ==
-                                                      outletName
-                                                      ? Colors.white
-                                                      : Colors.black)),
-                                        )),
-                                  );
-                                }),
-                          )
-                              : Container(
-                            height: 50,
-                            width: 50,
-                            child: CircularProgressIndicator(),
-                          );
-                        }),
-                  ),
-                ),
-                outletName == ""
-                    ? Container(
-                    height: 100,
-                    width: 100,
-                    child: Center(
-                        child: Text("Select Outlet",
-                            style: TextStyle(color: Colors.grey))))
-                    : FutureBuilder(
-                  future: generateInvoice(
-                      pageNumber, outletName, startTime, endTime),
-                  builder: (BuildContext context,
-                      AsyncSnapshot<dynamic> snapshot) {
-                    return snapshot.connectionState ==
-                        ConnectionState.waiting
-                        ? Container(
-                      height: 50,
-                      width: 50,
-                      child: Center(
-                        child: CircularProgressIndicator(
-                          color: Colors.blue,
-                        ),
-                      ),
-                    ) : Builder(builder: (context) {
-                      final List<dynamic> data = snapshot.data;
+                              Container(
+                                height: 600,
+                                width: 500,
+                                child: Padding(
+                                  padding: const EdgeInsets.all(30.0),
+                                  child: ListView.builder(
+                                      itemCount: data.length,
+                                      itemBuilder: (context, i) {
+                                        final Receipt receipt =
+                                        Receipt.fromJSON(data[i]);
 
 
-                      return Column(
-                        children: [
-                          SingleChildScrollView(
-                            scrollDirection: Axis.horizontal,
-                            child: Row(
-                              spacing: 10,
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Container(
-                                  height: 50,
-                                  width: 150,
-                                  child: TextField(
-                                    decoration:
-                                    InputDecoration(
-                                        hintText:
-                                        'Cashier Name'),
-                                    controller:
-                                    cashierController,
-                                    maxLength: 15,
-                                  ),
+                                        return showUnprinted == true && isAlreadyPrinted(receipt.salesInvoiceNumber) ? SizedBox() : InkWell(
+                                          child: Card(
+                                            child: Container(
+                                                height: 100 +
+                                                    (20 *
+                                                        receipt
+                                                            .variants.length
+                                                            .toDouble()),
+                                                child: Padding(
+                                                  padding:
+                                                  const EdgeInsets.all(
+                                                      10.0),
+                                                  child: Column(
+                                                      crossAxisAlignment:
+                                                      CrossAxisAlignment
+                                                          .start,
+                                                      children: [
+                                                        Text(
+                                                            "${receipt
+                                                                .dateFormatted}",
+                                                            style: TextStyle(
+                                                                fontWeight:
+                                                                FontWeight
+                                                                    .bold)),
+                                                        Text(
+                                                            "S.I#: ${receipt
+                                                                .salesInvoiceNumber}"),
+                                                        Text("Items:"),
+                                                        Container(
+                                                          height: 20 *
+                                                              receipt
+                                                                  .variants
+                                                                  .length
+                                                                  .toDouble(),
+                                                          child: ListView
+                                                              .builder(
+                                                              itemCount: receipt
+                                                                  .variants
+                                                                  .length,
+                                                              itemBuilder:
+                                                                  (context,
+                                                                  x) {
+                                                                return Text(
+                                                                    "${receipt
+                                                                        .variants[x]
+                                                                        .name}");
+                                                              }),
+                                                        ),
+                                                        Text(
+                                                            "Total Amount: ${receipt
+                                                                .gross}"),
+                                                      ]),
+                                                )),
+                                          ),
+                                          onTap: () {
+                                            printReceiptUSB(receipt, cashierController.text);
+                                          },
+                                        );
+                                      }),
                                 ),
-                                ElevatedButton(onPressed: () async {
-                                  final date = await showRangePickerDialog(
-                                    context: context,
-                                    minDate: DateTime(2021, 1, 1),
-                                    maxDate: DateTime(2050, 12, 31),
-                                  );
-
-                                  if (date?.start != null &&
-                                      date?.end != null) {
-                                    startTime = date!.start;
-                                    endTime = date!.end;
-
-                                    setState(() {
-
-                                    });
-                                  }
-                                },
-                                    child: Text(startTime == null
-                                        ? "Filter Date"
-                                        : "${DateFormat.yMMMMd().format(
-                                        startTime)} - ${DateFormat
-                                        .yMMMMd()
-                                        .format(endTime!)}")),
-
-                               StatefulBuilder(builder: (context, setState) {
-                                 return ElevatedButton(onPressed: () {
-                                   showDialog(context: context, builder: (_) => AlertDialog(
-                                     content: SizedBox(
-                                       height: 400,
-                                       width: 300,
-                                       child: FutureBuilder(
-                                         future: PrintBluetoothThermal.pairedBluetooths,
-                                         builder: (BuildContext context, AsyncSnapshot<List<BluetoothInfo>> devices) {
-                                           return devices.connectionState == ConnectionState.done ? Container(
-                                             height: 300,
-                                             child: devices.data!.isEmpty ? Center(
-                                               child: Text(
-                                                 "Ensure Bluetooth is turned on and paired with Printer",
-                                                 textAlign: TextAlign.center,),
-                                             ) : ListView.builder(
-                                                 itemCount: devices.data!.length,
-                                                 itemBuilder: (context, i) {
-                                               return ListTile(
-                                                 title: Text(devices.data![i].name),
-                                                 onTap: () async {
-                                                   showDialog(
-                                                       barrierDismissible: false,
-                                                       context: context, builder: (_) => AlertDialog(
-                                                     content: Container(
-                                                       height: 100,
-                                                       width: 100,
-                                                       child: Center(
-                                                         child: CircularProgressIndicator(),
-                                                       ),
-                                                     ),
-                                                   ));
-
-                                                   await PrintBluetoothThermal.disconnect;
-                                                   await PrintBluetoothThermal.connect(macPrinterAddress: devices.data![i].macAdress);
-
-                                                   Navigator.pop(context);
-                                                   Navigator.pop(context);
-
-                                                   ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Connected to ${devices.data![i].name}")));
-                                                 },
-                                               );
-                                             }),
-                                           ) : Center(
-                                             child: Container(
-                                               height: 50,
-                                               width: 50,
-                                               child: CircularProgressIndicator(),
-                                             ),
-                                           );
-                                         },
-                                       ),
-                                     ),
-                                   ));
-                                 }, child: StreamBuilder(stream: checkConnection(),
-                                 builder: (BuildContext context, AsyncSnapshot<bool> snapshot) {
-                                   return Text(snapshot.data == true ? "Connected" : "Select Printer");
-                                 } ));
-                               }),
-
-                               TextButton(onPressed: () {
-                                 showUnprinted = !showUnprinted;
-                                 setState((){});
-                               }, child: Text(showUnprinted == true ? "Show All" : "Show Unprinted")),
-
-                               StatefulBuilder(builder: (context, setState) {
-                                 return TextButton(onPressed: () {
-                                   paperSize = paperSize == 1 ? 0 : 1;
-                                   setState(() {});
-                                 }, child: Text("Paper Size: ${paperSize == 1 ? "mm80" : "mm58"}"));
-                               })
-                              ],
-                            ),
-                          ),
-                          Container(
-                            height: 600,
-                            width: 500,
-                            child: Padding(
-                              padding: const EdgeInsets.all(30.0),
-                              child: ListView.builder(
-                                  itemCount: data.length,
-                                  itemBuilder: (context, i) {
-                                    final Receipt receipt =
-                                    Receipt.fromJSON(data[i]);
-
-
-                                    return showUnprinted == true && isAlreadyPrinted(receipt.salesInvoiceNumber) ? SizedBox() : InkWell(
-                                      child: Card(
-                                        child: Container(
-                                            height: 100 +
-                                                (20 *
-                                                    receipt
-                                                        .variants.length
-                                                        .toDouble()),
-                                            child: Padding(
-                                              padding:
-                                              const EdgeInsets.all(
-                                                  10.0),
-                                              child: Column(
-                                                  crossAxisAlignment:
-                                                  CrossAxisAlignment
-                                                      .start,
-                                                  children: [
-                                                    Text(
-                                                        "${receipt
-                                                            .dateFormatted}",
-                                                        style: TextStyle(
-                                                            fontWeight:
-                                                            FontWeight
-                                                                .bold)),
-                                                    Text(
-                                                        "S.I#: ${receipt
-                                                            .salesInvoiceNumber}"),
-                                                    Text("Items:"),
-                                                    Container(
-                                                      height: 20 *
-                                                          receipt
-                                                              .variants
-                                                              .length
-                                                              .toDouble(),
-                                                      child: ListView
-                                                          .builder(
-                                                          itemCount: receipt
-                                                              .variants
-                                                              .length,
-                                                          itemBuilder:
-                                                              (context,
-                                                              x) {
-                                                            return Text(
-                                                                "${receipt
-                                                                    .variants[x]
-                                                                    .name}");
-                                                          }),
-                                                    ),
-                                                    Text(
-                                                        "Total Amount: ${receipt
-                                                            .gross}"),
-                                                  ]),
-                                            )),
-                                      ),
-                                      onTap: () {
-                                        printReceipt(receipt, cashierController.text);
-                                      },
-                                    );
-                                  }),
-                            ),
-                          ),
-                        ],
-                      );
-                    });
-                  },
-                ),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    IconButton(
-                        onPressed: () {
-                          if (pageNumber == 1) {
-                            return;
-                          } else {
-                            pageNumber -= 1;
-                            setState(() {});
-                          }
-                        },
-                        icon: Icon(Icons.arrow_left)),
-                    SizedBox(width: 5),
-                    Text("$pageNumber"),
-                    SizedBox(width: 5),
-                    IconButton(
-                        onPressed: () {
-                          pageNumber += 1;
-                          setState(() {});
-                        },
-                        icon: Icon(Icons.arrow_right)),
+                              ),
+                            ],
+                          );
+                        });
+                      },
+                    ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        IconButton(
+                            onPressed: () {
+                              if (pageNumber == 1) {
+                                return;
+                              } else {
+                                pageNumber -= 1;
+                                setState(() {});
+                              }
+                            },
+                            icon: Icon(Icons.arrow_left)),
+                        SizedBox(width: 5),
+                        Text("$pageNumber"),
+                        SizedBox(width: 5),
+                        IconButton(
+                            onPressed: () {
+                              pageNumber += 1;
+                              setState(() {});
+                            },
+                            icon: Icon(Icons.arrow_right)),
+                      ],
+                    )
                   ],
-                )
-              ],
+                );
+              },
+            ) : Center(
+              child: Container(
+                  height: 50,
+                  width: 50,
+                  child: CircularProgressIndicator()),
             );
-          },
+        },
         ),
       ),
     );
@@ -443,8 +488,39 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  printReceiptUSB(Receipt receipt, String cashier) async {
 
-  Future<void> printReceipt(Receipt receipt, String cashier) async {
+    if (selectedUsb == null) {
+      return;
+    } else {
+      final bytes = await generateReceipt(receipt, cashier);
+
+      try {
+
+      } catch(e) {
+        print(e);
+      }
+
+      final result = await printerManager.send(
+        type: PrinterType.usb,
+        bytes: bytes,
+      );
+
+      if (result == true) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Receipt Printed")));
+        savePrinted(receipt.salesInvoiceNumber);
+        setState(() {});
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error Printing Receipt")));
+      }
+
+    }
+
+
+  }
+
+
+  Future<void> printReceiptBT(Receipt receipt, String cashier) async {
     bool conecctionStatus = await PrintBluetoothThermal.connectionStatus;
     if (conecctionStatus) {
       List<int> ticket = await generateReceipt(receipt, cashier);
@@ -464,7 +540,9 @@ class _HomeScreenState extends State<HomeScreen> {
     List<int> bytes = [];
 
     final profile = await CapabilityProfile.load();
-    final generator = Generator(paperSize == 1? PaperSize.mm80 : PaperSize.mm58, profile);
+    final generator = Generator(paperSize == 1? PaperSize.mm72 : PaperSize.mm58, profile);
+
+
     bytes += generator.reset();
 
 
@@ -632,7 +710,7 @@ class _HomeScreenState extends State<HomeScreen> {
     bytes += generator.text('ACCREG: 25A9027329942018030881', styles: PosStyles(align: PosAlign.center));
     bytes += generator.text('DATE ISSUED: JUNE 03, 2019', styles: PosStyles(align: PosAlign.center));
     bytes += generator.text('PTU: FP102022-106-0352440-00000', styles: PosStyles(align: PosAlign.center));
-    bytes += generator.text('THIS SERVES AS AN OFFICIAL RECEIPT', styles: PosStyles(align: PosAlign.center, height: PosTextSize.size1, width: PosTextSize.size1));
+    bytes += generator.text('THIS SERVES AS AN OFFICIAL RECEIPT', styles: PosStyles(align: PosAlign.center, fontType: PosFontType.fontB));
 
 
     bytes += generator.feed(3);
@@ -660,5 +738,34 @@ class _HomeScreenState extends State<HomeScreen> {
 
 
 
+  Future<void> scanUsb() async {
+    usbDevices.clear();
+
+    printerManager
+        .discovery(type: PrinterType.usb)
+        .listen((device) {
+
+          print(device.name);
+      usbDevices.add(device);
+    });
+
+
+    await selectPrinter(usbDevices[0]);
+  }
+
+  Future<void> selectPrinter(PrinterDevice device) async {
+    await printerManager.disconnect(type: PrinterType.usb);
+    selectedUsb = device;
+
+    await printerManager.connect(
+      type: PrinterType.usb,
+      model: UsbPrinterInput(
+        name: selectedUsb!.name,
+        vendorId: selectedUsb!.vendorId,
+        productId: selectedUsb!.productId,
+      ),
+    );
+    setState(() {});
+  }
 
 }
