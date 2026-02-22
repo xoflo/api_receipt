@@ -27,7 +27,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
 
   int pageNumber = 1;
-  String outletName = "";
+  String outletName = "CIGAR SECTION";
 
 
   DateTime startTime = DateTime.now();
@@ -488,7 +488,7 @@ class _HomeScreenState extends State<HomeScreen> {
     bytes += generator.text('TID: ${receipt.tid}  Trans type: ${receipt.transactionType}', styles: PosStyles(align: PosAlign.left));
     bytes += generator.text('Client: ${receipt.client}', styles: PosStyles(align: PosAlign.left));
 
-    bytes += generator.emptyLines(2);
+    bytes += generator.emptyLines(1);
 
     receipt.variants.forEach((product) {
       bytes += generator.row([
@@ -509,7 +509,7 @@ class _HomeScreenState extends State<HomeScreen> {
     });
 
 
-    bytes += generator.emptyLines(2);
+    bytes += generator.emptyLines(1);
 
     bytes += generator.row([
       PosColumn(
@@ -550,7 +550,7 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     ]);
 
-    bytes += generator.emptyLines(2);
+    bytes += generator.emptyLines(1);
 
     bytes += generator.row([
       PosColumn(
@@ -632,7 +632,7 @@ class _HomeScreenState extends State<HomeScreen> {
     bytes += generator.text('ACCREG: 25A9027329942018030881', styles: PosStyles(align: PosAlign.center));
     bytes += generator.text('DATE ISSUED: JUNE 03, 2019', styles: PosStyles(align: PosAlign.center));
     bytes += generator.text('PTU: FP102022-106-0352440-00000', styles: PosStyles(align: PosAlign.center));
-    bytes += generator.text('THIS SERVES AS AN OFFICIAL RECEIPT', styles: PosStyles(align: PosAlign.center, height: PosTextSize.size1, width: PosTextSize.size1, fontType: PosFontType.fontB));
+    bytes += generator.text('THIS SERVES AS AN OFFICIAL RECEIPT', styles: PosStyles(align: PosAlign.center, height: PosTextSize.size1, width: PosTextSize.size1));
 
 
     bytes += generator.feed(3);
@@ -642,7 +642,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
 
   Stream<bool> checkConnection() {
-    return Stream.periodic(const Duration(seconds: 5))
+    return Stream.periodic(Duration(seconds: 30))
         .asyncMap((_) async {
       return await PrintBluetoothThermal.connectionStatus;
     });
