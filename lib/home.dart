@@ -497,7 +497,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
 
 
-      if (selectedUsb!.name == "Generic / Text Only") {
+      if (selectedUsb!.name == "POS-PRINTER") {
         final result = await printerManager.send(
           type: PrinterType.usb,
           bytes: bytes,
