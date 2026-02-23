@@ -33,7 +33,7 @@ class _HomeScreenState extends State<HomeScreen> {
   DateTime endTime = DateTime.now();
 
 
-  int paperSize = 2;
+  int paperSize = 1;
 
   bool showUnprinted = true;
 
@@ -497,7 +497,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
 
 
-      if (selectedUsb!.name == "POS-PRINTER") {
+      if (selectedUsb!.name.toString().toUpperCase() == "TM-U220D") {
         final result = await printerManager.send(
           type: PrinterType.usb,
           bytes: bytes,
