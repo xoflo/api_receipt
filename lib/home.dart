@@ -552,7 +552,7 @@ class _HomeScreenState extends State<HomeScreen> {
     // ---------------------------------
     // SAFE WIDTH SETTINGS (TM-U220D)
     // ---------------------------------
-    const int leftWidth = 18;
+    const int leftWidth = 20;
     const int rightWidth = 10;
 
     String twoCol(String left, String right) {
@@ -569,6 +569,11 @@ class _HomeScreenState extends State<HomeScreen> {
 
     PosStyles normal = PosStyles(
       align: PosAlign.left,
+      fontType: PosFontType.fontA,
+    );
+
+    PosStyles right = PosStyles(
+      align: PosAlign.right,
       fontType: PosFontType.fontA,
     );
 
@@ -620,6 +625,8 @@ class _HomeScreenState extends State<HomeScreen> {
     // ---------------------------------
     // ITEMS
     // ---------------------------------
+    double totalQty = 0.00;
+    
     for (var product in receipt.variants) {
       String name = product.name ?? '';
 
@@ -629,6 +636,8 @@ class _HomeScreenState extends State<HomeScreen> {
       }
 
       bytes += generator.text(name, styles: normal);
+      
+      totalQty += product.quantity;
 
       double total = product.price * product.quantity;
 
@@ -641,7 +650,10 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     }
 
-    bytes += generator.emptyLines(1);
+    bytes += generator.text(
+      twoCol("totalQty.toStringAsFixed(2)    Item(s)", "---------"),
+      styles: normal,
+    );
 
     // ---------------------------------
     // TOTALS
@@ -661,7 +673,7 @@ class _HomeScreenState extends State<HomeScreen> {
       styles: normal,
     );
 
-    bytes += generator.emptyLines(1);
+    bytes += generator.text("---------", styles: right);
 
     bytes += generator.text(
       twoCol('VATABLE SALES:', receipt.vatableSales),
@@ -688,7 +700,10 @@ class _HomeScreenState extends State<HomeScreen> {
       styles: normal,
     );
 
-    bytes += generator.emptyLines(2);
+
+    bytes += generator.text('--------------------------------', styles: center);
+
+    bytes += generator.emptyLines(1);
 
     // ---------------------------------
     // CUSTOMER DETAILS
@@ -710,8 +725,9 @@ class _HomeScreenState extends State<HomeScreen> {
     bytes += generator.text('PTU: FP102022-106-0352440-00000', styles: center);
     bytes += generator.text('THIS SERVES AS OFFICIAL RECEIPT', styles: center);
 
-    bytes += generator.emptyLines(3);
+    bytes += generator.emptyLines(6);
 
+    await Future.delayed(Duration(milliseconds: 300));
     // ---------------------------------
     // FINAL HARD RESET
     // ---------------------------------
