@@ -497,7 +497,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
 
 
-      if (selectedUsb!.name.toString().toUpperCase() == "EPSON TM-U220 Receipt") {
+      if (selectedUsb!.name.toString().toUpperCase() == "EPSON TM-U220 RECEIPT") {
         final result = await printerManager.send(
           type: PrinterType.usb,
           bytes: bytes,
@@ -710,6 +710,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
 
     bytes += generator.feed(3);
+
+
+    bytes += generator.reset();
     // bytes += generator.cut();
     return bytes;
   }
