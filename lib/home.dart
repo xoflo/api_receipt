@@ -552,7 +552,7 @@ class _HomeScreenState extends State<HomeScreen> {
     // ---------------------------------
     // SAFE WIDTH SETTINGS (TM-U220D)
     // ---------------------------------
-    const int leftWidth = 20;
+    const int leftWidth = 28;
     const int rightWidth = 10;
 
     String twoCol(String left, String right) {
@@ -569,23 +569,23 @@ class _HomeScreenState extends State<HomeScreen> {
 
     PosStyles normal = PosStyles(
       align: PosAlign.left,
-      fontType: PosFontType.fontA,
+      fontType: PosFontType.fontB,
     );
 
     PosStyles right = PosStyles(
       align: PosAlign.right,
-      fontType: PosFontType.fontA,
+      fontType: PosFontType.fontB,
     );
 
     PosStyles center = PosStyles(
       align: PosAlign.center,
-      fontType: PosFontType.fontA,
+      fontType: PosFontType.fontB,
     );
 
     PosStyles boldCenter = PosStyles(
       align: PosAlign.center,
       bold: true,
-      fontType: PosFontType.fontA,
+      fontType: PosFontType.fontB,
     );
 
     // ---------------------------------
@@ -605,6 +605,7 @@ class _HomeScreenState extends State<HomeScreen> {
     // ---------------------------------
     // INFO
     // ---------------------------------
+    bytes += generator.emptyLines(1);
     bytes += generator.text('S.I#: ${receipt.salesInvoiceNumber}', styles: normal);
     bytes += generator.text('Cashier: $cashier', styles: normal);
     bytes += generator.text('Date: ${receipt.dateFormatted}', styles: normal);
@@ -616,9 +617,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
     bytes += generator.emptyLines(1);
 
-    bytes += generator.text('--------------------------------', styles: center);
+    bytes += generator.text('-------------------------------------', styles: center);
     bytes += generator.text(twoCol('Item / Barcode   QTY', "Amount"), styles: normal);
-    bytes += generator.text('--------------------------------', styles: center);
+    bytes += generator.text('-------------------------------------', styles: center);
 
     bytes += generator.emptyLines(1);
 
@@ -643,7 +644,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
       bytes += generator.text(
         twoCol(
-          "    ${product.price.toStringAsFixed(2)}x${product.quantity}",
+          "    ${product.price.toStringAsFixed(2)} x ${product.quantity.toStringAsFixed(2)}",
           "${total.toStringAsFixed(2)} V",
         ),
         styles: normal,
@@ -651,7 +652,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     bytes += generator.text(
-      twoCol("totalQty.toStringAsFixed(2)    Item(s)", "---------"),
+      twoCol("${totalQty.toStringAsFixed(2)}    Item(s)", "---------"),
       styles: normal,
     );
 
@@ -673,7 +674,10 @@ class _HomeScreenState extends State<HomeScreen> {
       styles: normal,
     );
 
-    bytes += generator.text("---------", styles: right);
+    bytes += generator.text(
+      twoCol("", "---------"),
+      styles: normal,
+    );
 
     bytes += generator.text(
       twoCol('VATABLE SALES:', receipt.vatableSales),
@@ -701,16 +705,16 @@ class _HomeScreenState extends State<HomeScreen> {
     );
 
 
-    bytes += generator.text('--------------------------------', styles: center);
+    bytes += generator.text('-------------------------------------', styles: center);
 
     bytes += generator.emptyLines(1);
 
     // ---------------------------------
     // CUSTOMER DETAILS
     // ---------------------------------
-    bytes += generator.text('NAME: _______________________', styles: center);
-    bytes += generator.text('ADDRESS: ____________________', styles: center);
-    bytes += generator.text('TIN: ________________________', styles: center);
+    bytes += generator.text('NAME: __________________________', styles: center);
+    bytes += generator.text('ADDRESS: _______________________', styles: center);
+    bytes += generator.text('TIN: ___________________________', styles: center);
 
     bytes += generator.emptyLines(1);
 
@@ -723,11 +727,16 @@ class _HomeScreenState extends State<HomeScreen> {
     bytes += generator.text('ACCREG: 25A9027329942018030881', styles: center);
     bytes += generator.text('DATE ISSUED: JUNE 03, 2019', styles: center);
     bytes += generator.text('PTU: FP102022-106-0352440-00000', styles: center);
-    bytes += generator.text('THIS SERVES AS OFFICIAL RECEIPT', styles: center);
+    bytes += generator.text('THIS SERVES AS AN OFFICIAL RECEIPT', styles: center);
 
     bytes += generator.emptyLines(6);
 
-    await Future.delayed(Duration(milliseconds: 300));
+    // Force line feed
+        bytes += [10];
+
+    // Small print buffer flush (print and feed 1 line)
+        bytes += [27, 100, 1]; // ESC d 1
+
     // ---------------------------------
     // FINAL HARD RESET
     // ---------------------------------
