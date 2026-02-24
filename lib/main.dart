@@ -10,6 +10,7 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Hive.initFlutter();
   await Hive.openBox('printedInvoices');
+  await Hive.openBox('settings');
   runApp(const MyApp());
 
 }
@@ -47,6 +48,11 @@ class _MyHomePageState extends State<MyHomePage> {
   final user = TextEditingController();
   final secret = TextEditingController();
 
+
+  final settingsBox = Hive.box('settings');
+
+  bool obscurePin = true;
+
   @override
   Widget build(BuildContext context) {
 
@@ -57,58 +63,110 @@ class _MyHomePageState extends State<MyHomePage> {
         title: Text(widget.title, style: TextStyle(fontWeight: FontWeight.w700)),
       ),
       body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            Container(
-              height: 50,
-              width: 200,
-              child: TextField(
-                decoration: InputDecoration(
-                  hintText: 'User'
+        child: StatefulBuilder(
+          builder: (BuildContext context, void Function(void Function()) setState) {
+            return Column(
+              spacing: 10,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: <Widget>[
+                Container(
+                  height: 50,
+                  width: 200,
+                  child: TextField(
+                    obscureText: obscurePin,
+                    decoration: InputDecoration(
+                        hintText: 'Enter PIN'
+                    ),
+                    controller: secret,
+                  ),
                 ),
-                controller: user,
-              ),
-            ),
-            SizedBox(height: 10),
-            Container(
-              height: 50,
-              width: 200,
-              child: TextField(
-                decoration: InputDecoration(
-                    hintText: 'Password'
+                IconButton(onPressed: () => setState(() => obscurePin = !obscurePin), icon: Icon(Icons.remove_red_eye)),
+                Container(
+                  height: 50,
+                  width: 200,
+                  child: ElevatedButton(
+                    onPressed: () async {
+                      final userValue = user.text;
+                      final secretValue = secret.text;
+                      String token = "";
+
+                      try {
+                        token = await generateToken();
+                        print(token);
+                      } catch(e) {
+                        print(e.toString());
+                      }
+
+                      // https://jsonplaceholder.typicode.com/posts
+                      // https://gizmoetc.dealpos.com/api/v3/Token/OAuth2
+
+                      if (secretValue == await getPIN() || secretValue == await getAdminPIN()) {
+                        Navigator.push(context, MaterialPageRoute(builder: (_) => HomeScreen(token: token)));
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("PIN Incorrect")));
+                      }
+
+                    },
+                    child: Text("Sign In"),
+                  ),
                 ),
-                controller: secret,
-              ),
-            ),
-            SizedBox(height: 20),
-            Container(
-              height: 50,
-              width: 200,
-              child: ElevatedButton(
-                onPressed: () async {
-                  final userValue = user.text;
-                  final secretValue = secret.text;
-                  String token = "";
+                SizedBox(height: 10),
+                TextButton(onPressed: () {
+                  TextEditingController oldPass = TextEditingController();
+                  TextEditingController newPass = TextEditingController();
+                  TextEditingController newPassConfirm = TextEditingController();
 
-                  try {
-                    token = await generateToken();
-                    print(token);
-                  } catch(e) {
-                    print(e.toString());
-                  }
+                  showDialog(context: context, builder: (_) => AlertDialog(
+                    content: Container(
+                      height: 150,
+                      width: 200,
+                      child: Column(
+                        children: [
+                          TextField(
+                            decoration: InputDecoration(
+                                hintText: 'Old PIN / Admin PIN'
+                            ),
+                            controller: oldPass,
+                          ),
 
-                  // https://jsonplaceholder.typicode.com/posts
-                  // https://gizmoetc.dealpos.com/api/v3/Token/OAuth2
+                          TextField(
+                            obscureText: true,
+                            decoration: InputDecoration(
+                                hintText: 'New PIN'
+                            ),
+                            controller: newPass,
+                          ),
+                          TextField(
+                            obscureText: true,
+                            decoration: InputDecoration(
+                                hintText: 'Confirm new PIN'
+                            ),
+                            controller: newPassConfirm,
+                          ),
+                        ],
+                      ),
+                    ),
+                    actions: [
+                      TextButton(onPressed: () async {
+                        if (oldPass.text == await getPIN() || oldPass.text == await getAdminPIN()) {
+                          if (newPassConfirm.text == newPass.text) {
+                            await setPIN(newPass.text);
+                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("PIN Changed")));
+                            Navigator.pop(context);
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("New PIN does not match.")));
+                          }
+                        } else {
+                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Old PIN Incorrect")));
+                        }
 
-                  Navigator.push(context, MaterialPageRoute(builder: (_) => HomeScreen(token: token)));
-
-                },
-                child: Text("Sign In"),
-              ),
-            ),
-            SizedBox(height: 10),
-          ],
+                      }, child: Text("Reset"))
+                    ],
+                  ));
+                }, child: Text("Reset PIN"))
+              ],
+            );
+          },
         ),
       ),
        // This trailing comma makes auto-formatting nicer for build methods.
@@ -147,5 +205,20 @@ class _MyHomePageState extends State<MyHomePage> {
 
     return result;
 
+  }
+
+
+  getPIN() async {
+    String pin = settingsBox.get('pin', defaultValue: "0000");
+    return pin;
+  }
+
+  getAdminPIN() async {
+    String pin = settingsBox.get('pinAdmin', defaultValue: "0000");
+    return pin;
+  }
+
+  setPIN(String value) async {
+    await settingsBox.put('pin', value);
   }
 }

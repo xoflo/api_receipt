@@ -37,7 +37,6 @@ class Receipt {
 
     this.variants = realVariants;
 
-    print("gross: $gross");
 
 
     this.vatableSales = (double.parse(gross.toString()) / 1.12).toStringAsFixed(2);
@@ -47,8 +46,7 @@ class Receipt {
     this.change = json['Payments'] == null ? "" : json['Payments'][0]['Amount'].toDouble() - gross.toDouble();
 
 
-    print("PAYMENTAMOUNT: ${this.paymentAmount}");
-    print("CHANGE: ${this.change}");
+
 
   }
 }

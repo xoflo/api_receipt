@@ -165,4 +165,73 @@
         return pw.Text('$name');
     }
   }
-   */
+
+
+
+  BT PRINTER
+
+
+                                              /*
+                                       StatefulBuilder(builder: (context, setState) {
+                                       return ElevatedButton(onPressed: () {
+                                         showDialog(context: context, builder: (_) => AlertDialog(
+                                           content: SizedBox(
+                                             height: 400,
+                                             width: 300,
+                                             child: FutureBuilder(
+                                               future: PrintBluetoothThermal.pairedBluetooths,
+                                               builder: (BuildContext context, AsyncSnapshot<List<BluetoothInfo>> devices) {
+                                                 return devices.connectionState == ConnectionState.done ? Container(
+                                                   height: 300,
+                                                   child: devices.data!.isEmpty ? Center(
+                                                     child: Text(
+                                                       "Ensure Bluetooth is turned on and paired with Printer",
+                                                       textAlign: TextAlign.center,),
+                                                   ) : ListView.builder(
+                                                       itemCount: devices.data!.length,
+                                                       itemBuilder: (context, i) {
+                                                     return ListTile(
+                                                       title: Text(devices.data![i].name),
+                                                       onTap: () async {
+                                                         showDialog(
+                                                             barrierDismissible: false,
+                                                             context: context, builder: (_) => AlertDialog(
+                                                           content: Container(
+                                                             height: 100,
+                                                             width: 100,
+                                                             child: Center(
+                                                               child: CircularProgressIndicator(),
+                                                             ),
+                                                           ),
+                                                         ));
+
+                                                         await PrintBluetoothThermal.disconnect;
+                                                         await PrintBluetoothThermal.connect(macPrinterAddress: devices.data![i].macAdress);
+
+                                                         Navigator.pop(context);
+                                                         Navigator.pop(context);
+
+                                                         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Connected to ${devices.data![i].name}")));
+                                                       },
+                                                     );
+                                                   }),
+                                                 ) : Center(
+                                                   child: Container(
+                                                     height: 50,
+                                                     width: 50,
+                                                     child: CircularProgressIndicator(),
+                                                   ),
+                                                 );
+                                               },
+                                             ),
+                                           ),
+                                         ));
+                                       }, child: StreamBuilder(stream: checkConnection(),
+                                       builder: (BuildContext context, AsyncSnapshot<bool> snapshot) {
+                                         return Text(snapshot.data == true ? "Connected" : "Select Printer");
+                                       } ));
+                                     }),
+
+                                      */
+ */
+
