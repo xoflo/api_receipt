@@ -538,8 +538,9 @@ class _HomeScreenState extends State<HomeScreen> {
     final profile = await CapabilityProfile.load();
     final generator = Generator(paperSize == 1? PaperSize.mm72 : PaperSize.mm58, profile);
 
-
+    bytes += [27, 64];
     bytes += generator.reset();
+
 
 
     bytes += generator.text('YBS SHOPWORLD, INC.', styles: PosStyles(align: PosAlign.center, bold: true, fontType: PosFontType.fontA));
@@ -713,6 +714,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
 
     bytes += generator.reset();
+    bytes += [27, 64];
     // bytes += generator.cut();
     return bytes;
   }
