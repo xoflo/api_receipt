@@ -321,6 +321,10 @@ class _HomeScreenState extends State<HomeScreen> {
                                         final Receipt receipt =
                                         Receipt.fromJSON(data[i]);
 
+                                        if (i == 0) {
+                                          print(data[i]);
+                                        }
+
 
                                         return showUnprinted == true && isAlreadyPrinted(receipt.salesInvoiceNumber) ? SizedBox() : InkWell(
                                           child: Card(
@@ -536,187 +540,168 @@ class _HomeScreenState extends State<HomeScreen> {
     List<int> bytes = [];
 
     final profile = await CapabilityProfile.load();
-    final generator = Generator(paperSize == 1? PaperSize.mm72 : PaperSize.mm58, profile);
+    final generator = Generator(PaperSize.mm58, profile);
 
-    bytes += [27, 64];
-    bytes += generator.reset();
+    // -------------------------------
+    // HARD INITIALIZE (VERY IMPORTANT)
+    // -------------------------------
+    bytes += [27, 64];      // ESC @
+    bytes += [27, 116, 0];  // ESC t 0 (default code table)
 
+    const int lineWidth = 42; // TM-U220 Font A width
 
+    String twoCol(String left, String right) {
+      int space = lineWidth - left.length - right.length;
+      if (space < 1) space = 1;
+      return left + ' ' * space + right;
+    }
 
-    bytes += generator.text('YBS SHOPWORLD, INC.', styles: PosStyles(align: PosAlign.center, bold: true, fontType: PosFontType.fontA));
-    bytes += generator.text('DONASCO ST. BAG-ONG LUNGSOD,', styles: PosStyles(align: PosAlign.center, fontType: PosFontType.fontA));
-    bytes += generator.text('TANDAG CITY, SURGAO DEL SUR', styles: PosStyles(align: PosAlign.center, fontType: PosFontType.fontA));
-    bytes += generator.text('VAT REG TIN: 430-923-946-000', styles: PosStyles(align: PosAlign.center, fontType: PosFontType.fontA));
-    bytes += generator.text('MIN: 221025020038061', styles: PosStyles(align: PosAlign.center, fontType: PosFontType.fontA));
-    bytes += generator.text('SERIAL NO: 50026B7783F19B54', styles: PosStyles(align: PosAlign.center, fontType: PosFontType.fontA));
+    PosStyles normal = PosStyles(
+      align: PosAlign.left,
+      fontType: PosFontType.fontA,
+    );
+
+    PosStyles center = PosStyles(
+      align: PosAlign.center,
+      fontType: PosFontType.fontA,
+    );
+
+    PosStyles boldCenter = PosStyles(
+      align: PosAlign.center,
+      bold: true,
+      fontType: PosFontType.fontA,
+    );
+
+    // -------------------------------
+    // HEADER
+    // -------------------------------
+    bytes += generator.text('YBS SHOPWORLD, INC.', styles: boldCenter);
+    bytes += generator.text('DONASCO ST. BAG-ONG LUNGSOD,', styles: center);
+    bytes += generator.text('TANDAG CITY, SURGAO DEL SUR', styles: center);
+    bytes += generator.text('VAT REG TIN: 430-923-946-000', styles: center);
+    bytes += generator.text('MIN: 221025020038061', styles: center);
+    bytes += generator.text('SERIAL NO: 50026B7783F19B54', styles: center);
+
+    bytes += generator.emptyLines(1);
+    bytes += generator.text('OFFICIAL RECEIPT', styles: center);
+    bytes += generator.emptyLines(1);
+
+    // -------------------------------
+    // INFO
+    // -------------------------------
+    bytes += generator.text('S.I#: ${receipt.salesInvoiceNumber}', styles: normal);
+    bytes += generator.text('Cashier: $cashier', styles: normal);
+    bytes += generator.text('Date: ${receipt.dateFormatted}', styles: normal);
+    bytes += generator.text(
+        'TID: ${receipt.tid}  Type: ${receipt.transactionType}',
+        styles: normal);
+    bytes += generator.text('Client: ${receipt.client}', styles: normal);
 
     bytes += generator.emptyLines(1);
 
-    bytes += generator.text('OFFICIAL RECEIPT', styles: PosStyles(align: PosAlign.center, fontType: PosFontType.fontA));
+    // -------------------------------
+    // ITEMS
+    // -------------------------------
+    for (var product in receipt.variants) {
+      bytes += generator.text(product.name, styles: normal);
 
-    bytes += generator.emptyLines(1);
+      double total = product.price * product.quantity;
 
-    bytes += generator.text('S.I#: ${receipt.salesInvoiceNumber}', styles: PosStyles(align: PosAlign.left));
-    bytes += generator.text('Cashier: $cashier', styles: PosStyles(align: PosAlign.left));
-
-    bytes += generator.text('Date: ${receipt.dateFormatted}', styles: PosStyles(align: PosAlign.left));
-    bytes += generator.text('TID: ${receipt.tid}  Trans type: ${receipt.transactionType}', styles: PosStyles(align: PosAlign.left));
-    bytes += generator.text('Client: ${receipt.client}', styles: PosStyles(align: PosAlign.left));
-
-    bytes += generator.emptyLines(1);
-
-    receipt.variants.forEach((product) {
-      bytes += generator.row([
-        PosColumn(
-          text: product.name,
-          width: 8,
-          styles: PosStyles(align: PosAlign.left),
+      bytes += generator.text(
+        twoCol(
+          "${product.price.toStringAsFixed(2)} x${product.quantity}",
+          total.toStringAsFixed(2),
         ),
-        PosColumn(
-          text: 'v',
-          width: 4,
-          styles: PosStyles(align: PosAlign.right),
-        ),
-      ]);
-
-      bytes += generator.text("${product.price.toDouble().toStringAsFixed(2)}x${product.quantity}  ${product.price.toDouble() * product.quantity.toDouble()}", styles: PosStyles(align: PosAlign.right));
-
-    });
-
+        styles: normal,
+      );
+    }
 
     bytes += generator.emptyLines(1);
 
-    bytes += generator.row([
-      PosColumn(
-        text: 'TOTAL AMOUNT:',
-        width: 8,
-        styles: PosStyles(align: PosAlign.left),
-      ),
-      PosColumn(
-        text: receipt.gross.toDouble().toStringAsFixed(2),
-        width: 4,
-        styles: PosStyles(align: PosAlign.right),
-      ),
-    ]);
+    // -------------------------------
+    // TOTALS
+    // -------------------------------
+    bytes += generator.text(
+      twoCol('TOTAL AMOUNT:', receipt.gross.toStringAsFixed(2)),
+      styles: normal,
+    );
 
-    bytes += generator.row([
-      PosColumn(
-        text: 'TENDER AMOUNT:',
-        width: 8,
-        styles: PosStyles(align: PosAlign.left),
-      ),
-      PosColumn(
-        text: receipt.gross.toDouble().toStringAsFixed(2),
-        width: 4,
-        styles: PosStyles(align: PosAlign.right),
-      ),
-    ]);
+    bytes += generator.text(
+      twoCol('TENDER AMOUNT:', receipt.gross.toStringAsFixed(2)),
+      styles: normal,
+    );
 
-    bytes += generator.row([
-      PosColumn(
-        text: 'CHANGE AMOUNT:',
-        width: 8,
-        styles: PosStyles(align: PosAlign.left),
-      ),
-      PosColumn(
-        text: '000.00',
-        width: 4,
-        styles: PosStyles(align: PosAlign.right),
-      ),
-    ]);
+    bytes += generator.text(
+      twoCol('CHANGE AMOUNT:', '000.00'),
+      styles: normal,
+    );
 
     bytes += generator.emptyLines(1);
 
-    bytes += generator.row([
-      PosColumn(
-        text: 'VATABLE SALES:',
-        width: 8,
-        styles: PosStyles(align: PosAlign.left),
-      ),
-      PosColumn(
-        text: receipt.vatableSales,
-        width: 4,
-        styles: PosStyles(align: PosAlign.right),
-      ),
-    ]);
+    bytes += generator.text(
+      twoCol('VATABLE SALES:', receipt.vatableSales),
+      styles: normal,
+    );
 
-    bytes += generator.row([
-      PosColumn(
-        text: 'VAT AMOUNT:',
-        width: 8,
-        styles: PosStyles(align: PosAlign.left),
-      ),
-      PosColumn(
-        text: receipt.vatAmount,
-        width: 4,
-        styles: PosStyles(align: PosAlign.right),
-      ),
-    ]);
+    bytes += generator.text(
+      twoCol('VAT AMOUNT:', receipt.vatAmount),
+      styles: normal,
+    );
 
-    bytes += generator.row([
-      PosColumn(
-        text: 'NON-VATABLE SALES:',
-        width: 8,
-        styles: PosStyles(align: PosAlign.left),
-      ),
-      PosColumn(
-        text: '000.00',
-        width: 4,
-        styles: PosStyles(align: PosAlign.right),
-      ),
-    ]);
+    bytes += generator.text(
+      twoCol('NON-VATABLE SALES:', '000.00'),
+      styles: normal,
+    );
 
-    bytes += generator.row([
-      PosColumn(
-        text: 'VAT-EXEMPT SALES:',
-        width: 8,
-        styles: PosStyles(align: PosAlign.left),
-      ),
-      PosColumn(
-        text: '000.00',
-        width: 4,
-        styles: PosStyles(align: PosAlign.right),
-      ),
-    ]);
+    bytes += generator.text(
+      twoCol('VAT-EXEMPT SALES:', '000.00'),
+      styles: normal,
+    );
 
-    bytes += generator.row([
-      PosColumn(
-        text: 'ZERO-RATED SALES:',
-        width: 8,
-        styles: PosStyles(align: PosAlign.left),
-      ),
-      PosColumn(
-        text: '000.00',
-        width: 4,
-        styles: PosStyles(align: PosAlign.right),
-      ),
-    ]);
+    bytes += generator.text(
+      twoCol('ZERO-RATED SALES:', '000.00'),
+      styles: normal,
+    );
 
     bytes += generator.emptyLines(2);
 
-    bytes += generator.text('NAME: _______________________', styles: PosStyles(align: PosAlign.center));
-    bytes += generator.text('ADDRESS: _______________________', styles: PosStyles(align: PosAlign.center));
-    bytes += generator.text('TIN: _______________________', styles: PosStyles(align: PosAlign.center));
-
+    // -------------------------------
+    // CUSTOMER DETAILS
+    // -------------------------------
+    bytes += generator.text('NAME: _______________________', styles: center);
+    bytes += generator.text('ADDRESS: _______________________', styles: center);
+    bytes += generator.text('TIN: _______________________', styles: center);
 
     bytes += generator.emptyLines(1);
 
-    bytes += generator.text('POS45 ENTERPRISES', styles: PosStyles(align: PosAlign.center));
-    bytes += generator.text('BRGY. VALENCIA AURORA BLVD QC.', styles: PosStyles(align: PosAlign.center));
-    bytes += generator.text('NON-VAT REG TIN: 902-732-994-000', styles: PosStyles(align: PosAlign.center));
-    bytes += generator.text('ACCREG: 25A9027329942018030881', styles: PosStyles(align: PosAlign.center));
-    bytes += generator.text('DATE ISSUED: JUNE 03, 2019', styles: PosStyles(align: PosAlign.center));
-    bytes += generator.text('PTU: FP102022-106-0352440-00000', styles: PosStyles(align: PosAlign.center));
-    bytes += generator.text('THIS SERVES AS AN OFFICIAL RECEIPT', styles: PosStyles(align: PosAlign.center, fontType: PosFontType.fontA));
-
+    // -------------------------------
+    // FOOTER
+    // -------------------------------
+    bytes += generator.text('POS45 ENTERPRISES', styles: center);
+    bytes += generator.text('BRGY. VALENCIA AURORA BLVD QC.', styles: center);
+    bytes += generator.text('NON-VAT REG TIN: 902-732-994-000', styles: center);
+    bytes += generator.text('ACCREG: 25A9027329942018030881', styles: center);
+    bytes += generator.text('DATE ISSUED: JUNE 03, 2019', styles: center);
+    bytes += generator.text('PTU: FP102022-106-0352440-00000', styles: center);
+    bytes += generator.text(
+        'THIS SERVES AS OFFICIAL RECEIPT',
+        styles: center);
 
     bytes += generator.feed(3);
 
+    // -------------------------------
+    // HARD RESET AGAIN (VERY IMPORTANT)
+    // -------------------------------
+    bytes += [27, 64]; // ESC @
 
-    bytes += generator.reset();
-    bytes += [27, 64];
-    // bytes += generator.cut();
     return bytes;
+  }
+
+  String twoCol(String left, String right) {
+    const int width = 42;
+    int space = width - left.length - right.length;
+    if (space < 1) space = 1;
+    return left + ' ' * space + right;
   }
 
 

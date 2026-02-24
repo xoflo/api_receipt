@@ -11,6 +11,8 @@ class Receipt {
   dynamic transactionType;
   List<Product> variants = [];
   dynamic payments;
+  dynamic paymentAmount;
+  dynamic change;
   dynamic gross;
   dynamic taxType;
   dynamic vatableSales;
@@ -40,6 +42,14 @@ class Receipt {
 
     this.vatableSales = (double.parse(gross.toString()) / 1.12).toStringAsFixed(2);
     this.vatAmount = (double.parse(vatableSales.toString()) * .12).toStringAsFixed(2);
+
+    this.paymentAmount = json['Payments'] == null ? "" : json['Payments'][0]['Amount'];
+    this.change = json['Payments'] == null ? "" : json['Payments'][0]['Amount'].toDouble() - gross.toDouble();
+
+
+    print("PAYMENTAMOUNT: ${this.paymentAmount}");
+    print("CHANGE: ${this.change}");
+
   }
 }
 
