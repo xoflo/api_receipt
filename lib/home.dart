@@ -536,24 +536,35 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+
   Future<List<int>> generateReceipt(Receipt receipt, String cashier) async {
     List<int> bytes = [];
 
     final profile = await CapabilityProfile.load();
-    final generator = Generator(PaperSize.mm58, profile);
+    final generator = Generator(PaperSize.mm72, profile);
 
-    // -------------------------------
-    // HARD INITIALIZE (VERY IMPORTANT)
-    // -------------------------------
-    bytes += [27, 64];      // ESC @
-    bytes += [27, 116, 0];  // ESC t 0 (default code table)
+    // ---------------------------------
+    // HARD RESET (clears everything)
+    // ---------------------------------
+    bytes += [27, 64]; // ESC @
+    bytes += [27, 116, 0]; // ESC t 0 (code table default)
 
-    const int lineWidth = 42; // TM-U220 Font A width
+    // ---------------------------------
+    // SAFE WIDTH SETTINGS (TM-U220D)
+    // ---------------------------------
+    const int leftWidth = 18;
+    const int rightWidth = 10;
 
     String twoCol(String left, String right) {
-      int space = lineWidth - left.length - right.length;
-      if (space < 1) space = 1;
-      return left + ' ' * space + right;
+      if (left.length > leftWidth) {
+        left = left.substring(0, leftWidth);
+      }
+      if (right.length > rightWidth) {
+        right = right.substring(0, rightWidth);
+      }
+
+      return left.padRight(leftWidth) +
+          right.padLeft(rightWidth);
     }
 
     PosStyles normal = PosStyles(
@@ -572,9 +583,9 @@ class _HomeScreenState extends State<HomeScreen> {
       fontType: PosFontType.fontA,
     );
 
-    // -------------------------------
+    // ---------------------------------
     // HEADER
-    // -------------------------------
+    // ---------------------------------
     bytes += generator.text('YBS SHOPWORLD, INC.', styles: boldCenter);
     bytes += generator.text('DONASCO ST. BAG-ONG LUNGSOD,', styles: center);
     bytes += generator.text('TANDAG CITY, SURGAO DEL SUR', styles: center);
@@ -586,31 +597,45 @@ class _HomeScreenState extends State<HomeScreen> {
     bytes += generator.text('OFFICIAL RECEIPT', styles: center);
     bytes += generator.emptyLines(1);
 
-    // -------------------------------
+    // ---------------------------------
     // INFO
-    // -------------------------------
+    // ---------------------------------
     bytes += generator.text('S.I#: ${receipt.salesInvoiceNumber}', styles: normal);
     bytes += generator.text('Cashier: $cashier', styles: normal);
     bytes += generator.text('Date: ${receipt.dateFormatted}', styles: normal);
     bytes += generator.text(
-        'TID: ${receipt.tid}  Type: ${receipt.transactionType}',
-        styles: normal);
+      'TID: ${receipt.tid}  Type: ${receipt.transactionType}',
+      styles: normal,
+    );
     bytes += generator.text('Client: ${receipt.client}', styles: normal);
 
     bytes += generator.emptyLines(1);
 
-    // -------------------------------
+    bytes += generator.text('--------------------------------', styles: center);
+    bytes += generator.text(twoCol('Item / Barcode   QTY', "Amount"), styles: normal);
+    bytes += generator.text('--------------------------------', styles: center);
+
+    bytes += generator.emptyLines(1);
+
+    // ---------------------------------
     // ITEMS
-    // -------------------------------
+    // ---------------------------------
     for (var product in receipt.variants) {
-      bytes += generator.text(product.name, styles: normal);
+      String name = product.name ?? '';
+
+      // Trim product name safely to full width (38)
+      if (name.length > (leftWidth + rightWidth)) {
+        name = name.substring(0, leftWidth + rightWidth);
+      }
+
+      bytes += generator.text(name, styles: normal);
 
       double total = product.price * product.quantity;
 
       bytes += generator.text(
         twoCol(
-          "${product.price.toStringAsFixed(2)} x${product.quantity}",
-          total.toStringAsFixed(2),
+          "    ${product.price.toStringAsFixed(2)}x${product.quantity}",
+          "${total.toStringAsFixed(2)} V",
         ),
         styles: normal,
       );
@@ -618,9 +643,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
     bytes += generator.emptyLines(1);
 
-    // -------------------------------
+    // ---------------------------------
     // TOTALS
-    // -------------------------------
+    // ---------------------------------
     bytes += generator.text(
       twoCol('TOTAL AMOUNT:', receipt.gross.toStringAsFixed(2)),
       styles: normal,
@@ -632,7 +657,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
 
     bytes += generator.text(
-      twoCol('CHANGE AMOUNT:', '000.00'),
+      twoCol('CHANGE AMOUNT:', '0.00'),
       styles: normal,
     );
 
@@ -649,49 +674,47 @@ class _HomeScreenState extends State<HomeScreen> {
     );
 
     bytes += generator.text(
-      twoCol('NON-VATABLE SALES:', '000.00'),
+      twoCol('NON-VATABLE SALES:', '0.00'),
       styles: normal,
     );
 
     bytes += generator.text(
-      twoCol('VAT-EXEMPT SALES:', '000.00'),
+      twoCol('VAT-EXEMPT SALES:', '0.00'),
       styles: normal,
     );
 
     bytes += generator.text(
-      twoCol('ZERO-RATED SALES:', '000.00'),
+      twoCol('ZERO-RATED SALES:', '0.00'),
       styles: normal,
     );
 
     bytes += generator.emptyLines(2);
 
-    // -------------------------------
+    // ---------------------------------
     // CUSTOMER DETAILS
-    // -------------------------------
+    // ---------------------------------
     bytes += generator.text('NAME: _______________________', styles: center);
-    bytes += generator.text('ADDRESS: _______________________', styles: center);
-    bytes += generator.text('TIN: _______________________', styles: center);
+    bytes += generator.text('ADDRESS: ____________________', styles: center);
+    bytes += generator.text('TIN: ________________________', styles: center);
 
     bytes += generator.emptyLines(1);
 
-    // -------------------------------
+    // ---------------------------------
     // FOOTER
-    // -------------------------------
+    // ---------------------------------
     bytes += generator.text('POS45 ENTERPRISES', styles: center);
     bytes += generator.text('BRGY. VALENCIA AURORA BLVD QC.', styles: center);
     bytes += generator.text('NON-VAT REG TIN: 902-732-994-000', styles: center);
     bytes += generator.text('ACCREG: 25A9027329942018030881', styles: center);
     bytes += generator.text('DATE ISSUED: JUNE 03, 2019', styles: center);
     bytes += generator.text('PTU: FP102022-106-0352440-00000', styles: center);
-    bytes += generator.text(
-        'THIS SERVES AS OFFICIAL RECEIPT',
-        styles: center);
+    bytes += generator.text('THIS SERVES AS OFFICIAL RECEIPT', styles: center);
 
-    bytes += generator.feed(3);
+    bytes += generator.emptyLines(3);
 
-    // -------------------------------
-    // HARD RESET AGAIN (VERY IMPORTANT)
-    // -------------------------------
+    // ---------------------------------
+    // FINAL HARD RESET
+    // ---------------------------------
     bytes += [27, 64]; // ESC @
 
     return bytes;
