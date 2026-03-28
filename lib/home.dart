@@ -28,7 +28,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final invoiceBox = Hive.box('printedInvoices');
 
   int pageNumber = 1;
-  String outletName = "WHOLESALE SECTION";
+  String outletName = "CIGAR SECTION";
 
 
   DateTime startTime = DateTime.now();
@@ -380,7 +380,9 @@ class _HomeScreenState extends State<HomeScreen> {
                                                             await setAutoPrint(!snapshot.data);
                                                             ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Autoprint: ${!snapshot.data == true ? "On" : "Off"}")));
                                                             Navigator.pop(context);
-                                                            setState(() {}); }
+                                                            setState(() {}); } else {
+                                                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("PIN Incorrect")));
+                                                          }
                                                         }, child: Text("Submit"))
                                                       ],
                                                     ));
@@ -804,12 +806,12 @@ class _HomeScreenState extends State<HomeScreen> {
     );
 
     bytes += generator.text(
-      twoCol('TENDER AMOUNT:', receipt.gross.toStringAsFixed(2)),
+      twoCol('TENDER AMOUNT:', receipt.paymentAmount.toStringAsFixed(2)),
       styles: normal,
     );
 
     bytes += generator.text(
-      twoCol('CHANGE AMOUNT:', '0.00'),
+      twoCol('CHANGE AMOUNT:', receipt.change.toStringAsFixed(2)),
       styles: normal,
     );
 
@@ -935,42 +937,6 @@ class _HomeScreenState extends State<HomeScreen> {
     await settingsBox.put('pinAdmin', value);
   }
 
-  autoprintInvoice(List<Receipt> receipts) async {
-    final length = receipts.length;
-
-    int index = 1;
-
-    showDialog(context: context, builder: (_) => AlertDialog(
-      content: Container(
-        height: 200,
-        width: 200,
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text("Printing Receipts...", style: TextStyle(color: Colors.grey)),
-            StatefulBuilder(builder: (context, setState) {
-
-              for (int i = 0; i < length; i++) {
-                if (isAlreadyPrinted(receipts[i].salesInvoiceNumber) == false) {
-
-                  printReceiptUSB(receipts[i], cashierController.text);
-                  index += 1;
-                  setState(() {
-                  });
-              }}
-
-              return Column(
-                  spacing: 10,
-                  children: [
-                    Text("$index / $length Receipts", style: TextStyle(color: Colors.grey))
-              ]);
-            }),
-          ],
-        ),
-      )));
-
-
-  }
 
 
 

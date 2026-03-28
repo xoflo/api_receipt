@@ -25,7 +25,8 @@ class Receipt {
     this.date = json['Created'];
     this.dateFormatted = DateFormat('MMM d, yyyy h:mm a').format(DateTime.parse(json['Created']));
     this.client = json['Customer'] == null ? "" : json['Customer']['Name'];
-    this.transactionType = json['Payments'] == null ? "" : json['Payments'][0]['Method'];
+    this.transactionType = json['Payments'] == null ? "" : json['Payments'];
+    this.paymentAmount = json['Payments'] == null ? "" : json['Payments.Amount'];
     this.gross = json['Gross'];
     this.taxType = json['TaxType'];
 
@@ -35,6 +36,8 @@ class Receipt {
       realVariants.add(Product.fromJSON(variants[i]));
     }
 
+    print("PMENTS: $transactionType");
+    print("PAmount: $paymentAmount");
     this.variants = realVariants;
 
 
