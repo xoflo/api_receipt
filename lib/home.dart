@@ -51,13 +51,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   int printCount = 0;
 
-  @override
-  void initState() {
-
-
-    super.initState();
-  }
-
 
   @override
   Widget build(BuildContext context) {
@@ -169,7 +162,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                     .done
                                     ? Container(
                                   height: 50,
-                                  width: 600,
+                                  width: 200,
                                   child: ListView.builder(
                                       scrollDirection: Axis.horizontal,
                                       itemCount: snapshot.data!.length,
@@ -416,7 +409,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                                   return InkWell(
                                                     child: Card(
                                                       child: Container(
-                                                          height: 100 +
+                                                          height: 140 +
                                                               (20 *
                                                                   receipts[i]
                                                                       .variants.length
@@ -464,6 +457,14 @@ class _HomeScreenState extends State<HomeScreen> {
                                                                   Text(
                                                                       "Total Amount: ${receipts[i]
                                                                           .gross}"),
+
+                                                                  Text(
+                                                                      "Tender Amount: ${receipts[i]
+                                                                          .paymentAmount}"),
+
+                                                                  Text(
+                                                                      "Change: ${receipts[i]
+                                                                          .change}"),
                                                                 ]),
                                                           )),
                                                     ),
@@ -611,8 +612,11 @@ class _HomeScreenState extends State<HomeScreen> {
           if (isAlreadyPrinted(e.salesInvoiceNumber)) {
             toRemove.add(e);
           } else {
-            await printReceiptUSB(e, cashierController.text);
-            printCount++;
+
+            if (await getAutoPrint() == true) {
+              await printReceiptUSB(e, cashierController.text);
+              printCount++;
+            }
           }
         }
 
