@@ -199,7 +199,6 @@ class _MyHomePageState extends State<MyHomePage> {
     final uri = Uri.parse('https://myshop.dealpos.com/api/v3/Token/OAuth2');
     var response = await http.post(uri, body: body, headers: headers);
 
-    print(response.body);
 
     final result = jsonDecode(response.body)['access_token'];
 

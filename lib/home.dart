@@ -28,7 +28,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final invoiceBox = Hive.box('printedInvoices');
 
   int pageNumber = 1;
-  String outletName = "CIGAR SECTION";
+  String outletName = "WHOLESALE SECTION";
 
 
   DateTime startTime = DateTime.now();
@@ -409,7 +409,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                                   return InkWell(
                                                     child: Card(
                                                       child: Container(
-                                                          height: 140 +
+                                                          height: 120 +
                                                               (20 *
                                                                   receipts[i]
                                                                       .variants.length
@@ -454,26 +454,13 @@ class _HomeScreenState extends State<HomeScreen> {
                                                                                   .name}");
                                                                         }),
                                                                   ),
-                                                                  Text(
-                                                                      "Total Amount: ${receipts[i]
-                                                                          .gross}"),
 
-                                                                  Text(
-                                                                      "Tender Amount: ${receipts[i]
-                                                                          .paymentAmount}"),
-
-                                                                  Text(
-                                                                      "Change: ${receipts[i]
-                                                                          .change}"),
                                                                 ]),
                                                           )),
                                                     ),
                                                     onTap: () async {
 
-                                                     final result = await getPaymentNote(receipts[i].invoiceID);
-                                                     print("paymentData: $result");
-
-                                                     // await printReceiptUSB(receipts[i], cashierController.text);
+                                                     await printReceiptUSB(receipts[i], cashierController.text);
                                                     },
                                                   );
                                                 }),
@@ -548,7 +535,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
       final dynamic data = await jsonDecode(response.body);
 
-      print(data);
 
       return data;
     } catch (e) {
@@ -572,7 +558,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
     printCount = 0;
 
-    print("FetchedNew");
     try {
       final uri = Uri.parse("https://myshop.dealpos.com/api/v3/Report");
 
@@ -642,11 +627,9 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
 
-  Future<Map<String, dynamic>?> getPaymentNote(String invoiceId) async {
+  Future<String?> getPaymentNote(String invoiceId) async {
     try {
 
-      print("idHere: $invoiceId");
-      print(widget.token.isNotEmpty ? "tokenHere" : 'noToken');
 
       final response = await http.get(Uri.parse(
         "https://myshop.dealpos.com/api/v3/Invoice/ID?ID",
@@ -665,7 +648,7 @@ class _HomeScreenState extends State<HomeScreen> {
       final data = jsonDecode(response.body);
 
 
-      return data;
+      return data['Payments'][0]['BuyerPaidAmount'].toString();
 
     } catch (e) {
       print("Error: $e");
@@ -675,13 +658,17 @@ class _HomeScreenState extends State<HomeScreen> {
 
   printReceiptUSB(Receipt receipt, String cashier) async {
 
+
+
     if (selectedUsb == null) {
       return;
     } else {
 
 
+      final buyerPaidAmount = await getPaymentNote(receipt.invoiceID);
 
-      final bytes = await generateReceipt(receipt, cashier);
+
+      final bytes = await generateReceipt(receipt, cashier, buyerPaidAmount!);
 
 
 
@@ -707,7 +694,9 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> printReceiptBT(Receipt receipt, String cashier) async {
     bool conecctionStatus = await PrintBluetoothThermal.connectionStatus;
     if (conecctionStatus) {
-      List<int> ticket = await generateReceipt(receipt, cashier);
+
+      final buyerPaidAmount = await getPaymentNote(receipt.invoiceID);
+      List<int> ticket = await generateReceipt(receipt, cashier, buyerPaidAmount!);
       final result = await PrintBluetoothThermal.writeBytes(ticket);
 
       if (result == true) {
@@ -721,7 +710,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
 
-  Future<List<int>> generateReceipt(Receipt receipt, String cashier) async {
+  Future<List<int>> generateReceipt(Receipt receipt, String cashier, String buyerPaidAmount) async {
     List<int> bytes = [];
 
     final profile = await CapabilityProfile.load();
@@ -854,7 +843,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
 
     bytes += generator.text(
-      twoCol('CHANGE AMOUNT:', receipt.change.toStringAsFixed(2)),
+      twoCol('CHANGE AMOUNT:', double.parse(buyerPaidAmount).toStringAsFixed(2)),
       styles: normal,
     );
 

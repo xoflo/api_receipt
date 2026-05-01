@@ -48,11 +48,7 @@ class Receipt {
     this.vatAmount = (double.parse(vatableSales.toString()) * .12).toStringAsFixed(2);
 
     this.paymentAmount = json['Payments'] == null ? "" : json['Payments'][0]['Amount'];
-    this.change = json['Payments'][0];
 
-
-
-    print("$change, $gross, $paymentAmount");
 
 
   }
