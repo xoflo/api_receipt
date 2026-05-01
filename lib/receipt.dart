@@ -1,8 +1,9 @@
 import 'package:intl/intl.dart';
-
+import 'home.dart';
 
 class Receipt {
   dynamic salesInvoiceNumber;
+  dynamic invoiceID;
   dynamic date;
   dynamic dateFormatted;
   dynamic cashier;
@@ -18,10 +19,11 @@ class Receipt {
   dynamic vatableSales;
   dynamic vatAmount;
 
-  Receipt(this.salesInvoiceNumber, this.date, this.cashier, this.tid, this.client, this.transactionType, this.variants, this.payments, this.gross);
+  Receipt(this.salesInvoiceNumber, this.date, this.cashier, this.tid, this.client, this.transactionType, this.variants, this.payments, this.gross, this.change);
 
   Receipt.fromJSON(dynamic json) {
     this.salesInvoiceNumber = "00000000${json['Number']}";
+    this.invoiceID = "${json['InvoiceID']}";
     this.date = json['Created'];
     this.dateFormatted = DateFormat('MMM d, yyyy h:mm a').format(DateTime.parse(json['Created']));
     this.client = json['Customer'] == null ? "" : json['Customer']['Name'];
@@ -29,6 +31,8 @@ class Receipt {
 
     this.gross = json['Gross'];
     this.taxType = json['TaxType'];
+
+
 
     List<dynamic> variants = json['Variants'];
     List<Product> realVariants = [];
@@ -44,15 +48,16 @@ class Receipt {
     this.vatAmount = (double.parse(vatableSales.toString()) * .12).toStringAsFixed(2);
 
     this.paymentAmount = json['Payments'] == null ? "" : json['Payments'][0]['Amount'];
-    this.change = json['Payments'] == null ? "" : json['Payments'][0]['Amount'].toDouble() - gross.toDouble();
+    this.change = json['Payments'][0];
 
 
 
-    print("debug: $gross, $paymentAmount, $change");
+    print("$change, $gross, $paymentAmount");
 
 
   }
 }
+
 
 class Product {
   dynamic name;

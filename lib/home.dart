@@ -469,7 +469,11 @@ class _HomeScreenState extends State<HomeScreen> {
                                                           )),
                                                     ),
                                                     onTap: () async {
-                                                      await printReceiptUSB(receipts[i], cashierController.text);
+
+                                                     final result = await getPaymentNote(receipts[i].invoiceID);
+                                                     print("paymentData: $result");
+
+                                                     // await printReceiptUSB(receipts[i], cashierController.text);
                                                     },
                                                   );
                                                 }),
@@ -637,11 +641,46 @@ class _HomeScreenState extends State<HomeScreen> {
 
   }
 
+
+  Future<Map<String, dynamic>?> getPaymentNote(String invoiceId) async {
+    try {
+
+      print("idHere: $invoiceId");
+      print(widget.token.isNotEmpty ? "tokenHere" : 'noToken');
+
+      final response = await http.get(Uri.parse(
+        "https://myshop.dealpos.com/api/v3/Invoice/ID?ID",
+      ).replace(queryParameters: {
+        "ID": invoiceId.trim(),
+      }), headers: {
+        "Authorization": "Bearer ${widget.token.trim()}",
+        "Accept": "application/json",
+      },);
+
+      if (response.statusCode != 200) {
+        print("Request failed: ${response.statusCode}");
+        return null;
+      }
+
+      final data = jsonDecode(response.body);
+
+
+      return data;
+
+    } catch (e) {
+      print("Error: $e");
+      return null;
+    }
+  }
+
   printReceiptUSB(Receipt receipt, String cashier) async {
 
     if (selectedUsb == null) {
       return;
     } else {
+
+
+
       final bytes = await generateReceipt(receipt, cashier);
 
 
