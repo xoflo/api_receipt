@@ -838,12 +838,12 @@ class _HomeScreenState extends State<HomeScreen> {
     );
 
     bytes += generator.text(
-      twoCol('TENDER AMOUNT:', receipt.paymentAmount.toStringAsFixed(2)),
+      twoCol('TENDER AMOUNT:', double.parse(buyerPaidAmount).toStringAsFixed(2)),
       styles: normal,
     );
 
     bytes += generator.text(
-      twoCol('CHANGE AMOUNT:', double.parse(buyerPaidAmount).toStringAsFixed(2)),
+      twoCol('CHANGE AMOUNT:', (double.parse(buyerPaidAmount) - double.parse(receipt.gross)).toStringAsFixed(2)),
       styles: normal,
     );
 
