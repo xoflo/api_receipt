@@ -28,7 +28,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final invoiceBox = Hive.box('printedInvoices');
 
   int pageNumber = 1;
-  String outletName = "CIGAR SECTION";
+  String outletName = "WHOLESALE SECTION";
 
 
   DateTime startTime = DateTime.now();
