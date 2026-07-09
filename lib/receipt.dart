@@ -27,7 +27,7 @@ class Receipt {
     this.date = json['Created'];
     this.dateFormatted = DateFormat('MMM d, yyyy h:mm a').format(DateTime.parse(json['Created']));
     this.client = json['Customer'] == null ? "" : json['Customer']['Name'];
-    this.transactionType = json['Payments'] == null ? "" : json['Payments'];
+    this.transactionType = json['Payments'] == null ? "" : json['Payments']["Method"];
 
     this.gross = json['Gross'];
     this.taxType = json['TaxType'];
