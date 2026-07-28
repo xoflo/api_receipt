@@ -319,7 +319,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 pw.Column(
                     mainAxisAlignment: pw.MainAxisAlignment.center,
                     children: [
-                      pw.Text("WHOLESALE SECTION",
+                      pw.Text("CIGAR SECTION",
                           style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
                       pw.Text("YBS SHOPWORLD, INC."),
                       pw.Text("DONASCO ST. BAG-ONG LUNGSOD,",
@@ -327,8 +327,14 @@ class _HomeScreenState extends State<HomeScreen> {
                       pw.Text("TANDAG CITY, SURIGAO DEL SUR",
                           textAlign: pw.TextAlign.center),
                       pw.Text("VAT REG TIN: 430-923-946-000"),
-                      pw.Text("MIN: 221025020038061"),
-                      pw.Text("SERIAL NO: 50026B7783F19B54"),
+                      pw.Text("MIN: 23072708254599051"),
+
+                      // CIGAR MIN: 23072708254599051
+                      // CIGAR SN: 50026B7381DB1AEF
+
+                      // WS MIN: 22030216030993690
+                      // WS SN: 30055796266
+                      pw.Text("SERIAL NO: 50026B7381DB1AEF"),
                       pw.SizedBox(height: 10),
                       pw.Text("OFFICIAL RECEIPT"),
                       pw.SizedBox(height: 10),
