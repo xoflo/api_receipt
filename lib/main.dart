@@ -163,7 +163,9 @@ class _MyHomePageState extends State<MyHomePage> {
                       }, child: Text("Reset"))
                     ],
                   ));
-                }, child: Text("Reset PIN"))
+                }, child: Text("Reset PIN")),
+
+                Text("v1.0.0")
               ],
             );
           },

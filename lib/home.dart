@@ -1,17 +1,15 @@
 import 'dart:async';
+import 'dart:convert';
+
 import 'package:apireceipt_new/receipt.dart';
 import 'package:date_picker_plus/date_picker_plus.dart';
 import 'package:esc_pos_utils_plus/esc_pos_utils_plus.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:hive_flutter/adapters.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
-import 'dart:convert';
 import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
 import 'package:thermal_printer/thermal_printer.dart';
-
-
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key, required this.token});
@@ -23,698 +21,665 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-
   final settingsBox = Hive.box('settings');
   final invoiceBox = Hive.box('printedInvoices');
 
   int pageNumber = 1;
   String outletName = "WHOLESALE SECTION";
 
-
   DateTime startTime = DateTime.now();
   DateTime endTime = DateTime.now();
 
-
   int paperSize = 1;
-
   bool showUnprinted = true;
-
   bool hiddenSettings = false;
 
-
   TextEditingController cashierController = TextEditingController();
-
 
   final printerManager = PrinterManager.instance;
   List<PrinterDevice> usbDevices = [];
   PrinterDevice? selectedUsb;
 
-  int printCount = 0;
+  // Polling / rate-limit state.
+  // The future and stream are created ONCE here (not inside build), so
+  // setState no longer fires extra API calls.
+  static const int pollSeconds = 10; // normal polling interval
+  static const int backoffSeconds = 30; // interval after a 429
+  late Future<void> _scanFuture;
+  Stream<List<Receipt>>? _invoiceStream;
+  int _streamGen = 0;
+  List<Receipt> _lastReceipts = [];
+  bool _rateLimited = false;
 
+  @override
+  void initState() {
+    super.initState();
+    _scanFuture = scanUsb();
+    _rebuildStream();
+  }
+
+  @override
+  void dispose() {
+    _streamGen++; // stops the polling loop
+    cashierController.dispose();
+    super.dispose();
+  }
+
+  /// Call this only when page, date range, or sort changes (or on refresh).
+  void _rebuildStream() {
+    final gen = ++_streamGen;
+    _invoiceStream = _poll(gen, pageNumber, outletName, startTime, endTime);
+  }
+
+  Stream<List<Receipt>> _poll(
+      int gen, int page, String outlet, DateTime start, DateTime end) async* {
+    while (mounted && gen == _streamGen) {
+      final result = await generateInvoice(page, outlet, start, end);
+      if (!mounted || gen != _streamGen) return;
+      yield result;
+      await Future.delayed(
+          Duration(seconds: _rateLimited ? backoffSeconds : pollSeconds));
+    }
+  }
+
+  void _snack(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  }
+
+  // ─────────────────────────────────────────────
+  // UI
+  // ─────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      floatingActionButton: hiddenSettings == true ? Row(
+      floatingActionButton: hiddenSettings
+          ? Row(
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
-          FloatingActionButton(onPressed: () {
-            TextEditingController oldPass = TextEditingController();
-            TextEditingController newPass = TextEditingController();
-            TextEditingController newPassConfirm = TextEditingController();
-
-            showDialog(context: context, builder: (_) => AlertDialog(
-              content: Container(
-                height: 150,
-                width: 200,
-                child: Column(
-                  children: [
-                    TextField(
-                      decoration: InputDecoration(
-                          hintText: 'Old PIN'
-                      ),
-                      controller: oldPass,
-                    ),
-
-                    TextField(
-                      obscureText: true,
-                      decoration: InputDecoration(
-                          hintText: 'New PIN'
-                      ),
-                      controller: newPass,
-                    ),
-                    TextField(
-                      obscureText: true,
-                      decoration: InputDecoration(
-                          hintText: 'Confirm new PIN'
-                      ),
-                      controller: newPassConfirm,
-                    ),
-                  ],
-                ),
-              ),
-              actions: [
-                TextButton(onPressed: () async {
-                  if (oldPass.text == await getAdminPIN()) {
-                    if (newPassConfirm.text == newPass.text) {
-                      await setAdminPIN(newPass.text);
-                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("PIN Changed")));
-                      Navigator.pop(context);
-                    } else {
-                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("New PIN does not match.")));
-                    }
-                  } else {
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Old PIN Incorrect")));
-                  }
-
-                }, child: Text("Reset"))
-              ],
-            ));
-          }, child: Icon(Icons.password))
+          FloatingActionButton(
+              onPressed: _showChangeAdminPin,
+              child: const Icon(Icons.password)),
         ],
-      ) : SizedBox(),
+      )
+          : const SizedBox(),
       body: GestureDetector(
         onLongPress: () => setState(() => hiddenSettings = !hiddenSettings),
         child: SingleChildScrollView(
           scrollDirection: Axis.vertical,
           child: FutureBuilder(
-            future:
-            scanUsb(), builder: (BuildContext context, AsyncSnapshot<void> snapshot) {
+            future: _scanFuture,
+            builder: (context, scanSnap) {
+              if (scanSnap.connectionState != ConnectionState.done) {
+                return const Center(
+                  child: SizedBox(
+                      height: 50, width: 50, child: CircularProgressIndicator()),
+                );
+              }
 
-              return snapshot.connectionState == ConnectionState.done ? StatefulBuilder(
-                builder:
-                    (BuildContext context, void Function(void Function()) setState) {
-                  return Column(
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.all(20.0),
-                        child: Align(
-                            alignment: Alignment.centerLeft,
-                            child: Text("Sale List",
-                                style: TextStyle(
-                                    fontSize: 40,
-                                    color: Colors.black,
-                                    fontWeight: FontWeight.bold),
-                                textAlign: TextAlign.left)),
-                      ),
-                      Divider(),
-                      Padding(
-                        padding: const EdgeInsets.all(15.0),
-                        child: Align(
-                          alignment: Alignment.center,
-                          child: FutureBuilder(
-                              future: getOutlets(),
-                              builder: (BuildContext context,
-                                  AsyncSnapshot<dynamic> snapshot) {
-                                if (!snapshot.hasData) {
-                                  return Center(
-                                    child: Container(
-                                      height: 50,
-                                      width: 50,
-                                      child: CircularProgressIndicator(
+              return Column(
+                children: [
+                  const Padding(
+                    padding: EdgeInsets.all(20.0),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text("Sale List",
+                          style: TextStyle(
+                              fontSize: 40,
+                              color: Colors.black,
+                              fontWeight: FontWeight.bold),
+                          textAlign: TextAlign.left),
+                    ),
+                  ),
+                  const Divider(),
 
-                                      ),
-                                    ),
-                                  );
-                                }
+                  // Outlet name is hardcoded, so no API call needed here.
+                  Padding(
+                    padding: const EdgeInsets.all(15.0),
+                    child: Chip(
+                      label: Text(outletName),
+                      backgroundColor: Colors.blue,
+                      labelStyle: const TextStyle(color: Colors.white),
+                    ),
+                  ),
 
-                                return snapshot.connectionState == ConnectionState
-                                    .done
-                                    ? Container(
-                                  height: 50,
-                                  width: 200,
-                                  child: ListView.builder(
-                                      scrollDirection: Axis.horizontal,
-                                      itemCount: snapshot.data!.length,
-                                      itemBuilder: (context, i) {
-                                        return snapshot.data[i]["Name"] != outletName ? SizedBox() : Card(
-                                          color:
-                                          snapshot.data[i]["Name"] == outletName
-                                              ? Colors.blue
-                                              : null,
-                                          child: InkWell(
-                                              onTap: () {
-                                                outletName =
-                                                "${snapshot.data[i]["Name"]}";
-                                                setState(() {});
-                                              },
-                                              child: Padding(
-                                                padding: const EdgeInsets.all(8.0),
-                                                child: Text(
-                                                    snapshot.data[i]["Name"],
-                                                    style: TextStyle(
-                                                        color: snapshot.data[i]
-                                                        ["Name"] ==
-                                                            outletName
-                                                            ? Colors.white
-                                                            : Colors.black)),
-                                              )),
-                                        );
-                                      }),
-                                )
-                                    : Container(
-                                  height: 50,
-                                  width: 50,
-                                  child: CircularProgressIndicator(),
-                                );
-                              }),
-                        ),
-                      ),
-                      outletName == ""
-                          ? Container(
-                          height: 100,
-                          width: 100,
+                  _buildControls(),
+
+                  IconButton(
+                    tooltip: "Refresh",
+                    onPressed: () {
+                      _rebuildStream();
+                      setState(() {});
+                    },
+                    icon: const Icon(Icons.refresh),
+                  ),
+
+                  StreamBuilder<List<Receipt>>(
+                    stream: _invoiceStream,
+                    builder: (context, snapshot) {
+                      if (!snapshot.hasData) {
+                        return const SizedBox(
+                          height: 50,
+                          width: 50,
                           child: Center(
-                              child: Text("Select Outlet",
-                                  style: TextStyle(color: Colors.grey))))
-                          : StatefulBuilder(
-                            builder: (BuildContext context, void Function(void Function()) setState) {
-                              return StreamBuilder(
-                                stream: generateInvoiceStream(
-                                    pageNumber, outletName, startTime, endTime),
-                                builder: (BuildContext context,
-                                    AsyncSnapshot<dynamic> snapshot) {
+                              child: CircularProgressIndicator(
+                                  color: Colors.blue)),
+                        );
+                      }
+                      // Hide receipts printed since the last poll right away
+                      // (local Hive check, no API call).
+                      final receipts = showUnprinted
+                          ? snapshot.data!
+                          .where((r) =>
+                      !isAlreadyPrinted(r.salesInvoiceNumber))
+                          .toList()
+                          : snapshot.data!;
+                      return _buildReceiptList(receipts);
+                    },
+                  ),
 
-
-                                  return !snapshot.hasData ? Container(
-                                    height: 50,
-                                    width: 50,
-                                    child: Center(
-                                      child: CircularProgressIndicator(
-                                        color: Colors.blue,
-                                      ),
-                                    ),
-                                  ) : Builder(builder: (context) {
-
-                                    List<Receipt> receipts = snapshot.data;
-
-
-                                    return Column(
-                                      children: [
-                                        SingleChildScrollView(
-                                          scrollDirection: Axis.horizontal,
-                                          child: Row(
-                                            spacing: 10,
-                                            mainAxisAlignment: MainAxisAlignment.center,
-                                            children: [
-                                              Container(
-                                                height: 50,
-                                                width: 140,
-                                                child: TextField(
-                                                  decoration:
-                                                  InputDecoration(
-                                                      hintText:
-                                                      'Cashier Name'),
-                                                  controller:
-                                                  cashierController,
-                                                  maxLength: 15,
-                                                ),
-                                              ),
-                                              ElevatedButton(onPressed: () async {
-                                                final date = await showRangePickerDialog(
-                                                  context: context,
-                                                  minDate: DateTime(2021, 1, 1),
-                                                  maxDate: DateTime(2050, 12, 31),
-                                                );
-
-                                                if (date?.start != null &&
-                                                    date?.end != null) {
-                                                  startTime = date!.start;
-                                                  endTime = date!.end;
-
-                                                  setState(() {
-
-                                                  });
-                                                }
-                                              },
-                                                  child: Text(startTime == null
-                                                      ? "Filter Date"
-                                                      : "${DateFormat.yMMMMd().format(
-                                                      startTime)} - ${DateFormat
-                                                      .yMMMMd()
-                                                      .format(endTime!)}")),
-
-                                              StatefulBuilder(builder: (context, setState) {
-                                                return ElevatedButton(onPressed: () {
-                                                  showDialog(context: context, builder: (_) => AlertDialog(
-                                                    content: Container(
-                                                        height: 400,
-                                                        width: 400,
-                                                        child: ListView.builder(
-                                                            itemCount: usbDevices.length,
-                                                            itemBuilder: (context, i) {
-                                                              return ListTile(
-                                                                title: Text(usbDevices[i].name),
-                                                                onTap: () async {
-                                                                  await selectPrinter(usbDevices[i]);
-                                                                  setState((){});
-                                                                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Connected to ${usbDevices[i].name}")));
-                                                                  Navigator.pop(context);
-                                                                },
-                                                              );
-                                                            })
-                                                    ),
-                                                  ));
-                                                }, child: Text(selectedUsb == null ? "Select Printer" : selectedUsb!.name));
-
-                                              }),
-
-
-                                              TextButton(onPressed: () {
-                                                TextEditingController pass = TextEditingController();
-
-                                                if (showUnprinted == false) {
-                                                  showUnprinted = true;
-                                                  setState((){});
-                                                  return;
-                                                }
-
-                                                if (showUnprinted == true) {
-                                                  showDialog(context: context, builder: (_) => AlertDialog(
-                                                    content: Container(
-                                                      height: 80,
-                                                      width: 120,
-                                                      child: Column(
-                                                        children: [
-                                                          TextField(
-                                                            decoration: InputDecoration(
-                                                                hintText: 'Admin Password'
-                                                            ),
-                                                            obscureText: true,
-                                                            controller: pass,
-                                                          )
-                                                        ],
-                                                      ),
-                                                    ),
-                                                    actions: [
-                                                      TextButton(onPressed: () async {
-                                                        if (pass.text == await getAdminPIN()) {
-                                                          showUnprinted = false;
-                                                          setState((){});
-                                                          Navigator.pop(context);
-                                                          return;
-                                                        }
-                                                      }, child: Text("Submit"))
-                                                    ],
-                                                  ));
-                                                }
-
-
-
-                                              }, child: Text(showUnprinted == true ? "Sort: To Print" : "Sort: All")),
-
-                                              FutureBuilder(
-                                                future: getAutoPrint(),
-                                                builder: (BuildContext context, AsyncSnapshot<dynamic> snapshot) {
-                                                  return snapshot.hasData ? TextButton(onPressed: () {
-
-                                                    TextEditingController pass = TextEditingController();
-
-                                                    showDialog(context: context, builder: (_) => AlertDialog(
-                                                      content: Container(
-                                                        height: 100,
-                                                        width: 100,
-                                                        child: Column(
-                                                          children: [
-                                                            TextField(
-                                                              obscureText: true,
-                                                              controller: pass,
-                                                              decoration: InputDecoration(
-                                                                  hintText: 'Enter Admin Pin'
-                                                              ),
-                                                            ),
-                                                            Text(snapshot.data! == false ? "Ensure all receipts are printed before changing this setting." : "")
-                                                          ],
-                                                        ),
-                                                      ),
-                                                      actions: [
-                                                        TextButton(onPressed: () async {
-                                                          if (pass.text == await getAdminPIN()) {
-                                                            await setAutoPrint(!snapshot.data);
-                                                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Autoprint: ${!snapshot.data == true ? "On" : "Off"}")));
-                                                            Navigator.pop(context);
-                                                            setState(() {}); } else {
-                                                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("PIN Incorrect")));
-                                                          }
-                                                        }, child: Text("Submit"))
-                                                      ],
-                                                    ));
-
-                                                  }, child: Text("Autoprint: ${snapshot.data! == true ? "On" : "Off"}")) : SizedBox() ;
-                                                },
-                                              ),
-
-
-                                            ],
-                                          ),
-                                        ),
-                                        IconButton(
-                                            tooltip: "Refresh",
-                                            onPressed: () {
-                                          this.setState((){});
-                                        }, icon: Icon(
-
-                                            Icons.refresh)),
-                                        Container(
-                                          height: 600,
-                                          width: 500,
-                                          child: Padding(
-                                            padding: const EdgeInsets.all(30.0),
-                                            child: receipts.isEmpty ? Center(
-                                              child: Text("No invoice to print", style: TextStyle(color: Colors.grey)),
-                                            ) : ListView.builder(
-                                                itemCount: receipts.length,
-                                                itemBuilder: (context, i) {
-
-                                                  return InkWell(
-                                                    child: Card(
-                                                      child: Container(
-                                                          height: 120 +
-                                                              (20 *
-                                                                  receipts[i]
-                                                                      .variants.length
-                                                                      .toDouble()),
-                                                          child: Padding(
-                                                            padding:
-                                                            const EdgeInsets.all(
-                                                                10.0),
-                                                            child: Column(
-                                                                crossAxisAlignment:
-                                                                CrossAxisAlignment
-                                                                    .start,
-                                                                children: [
-                                                                  Text(
-                                                                      "${receipts[i]
-                                                                          .dateFormatted}",
-                                                                      style: TextStyle(
-                                                                          fontWeight:
-                                                                          FontWeight
-                                                                              .bold)),
-                                                                  Text(
-                                                                      "S.I#: ${receipts[i]
-                                                                          .salesInvoiceNumber}"),
-                                                                  Text("Items:"),
-                                                                  Container(
-                                                                    height: 20 *
-                                                                        receipts[i]
-                                                                            .variants
-                                                                            .length
-                                                                            .toDouble(),
-                                                                    child: ListView
-                                                                        .builder(
-                                                                        itemCount: receipts[i]
-                                                                            .variants
-                                                                            .length,
-                                                                        itemBuilder:
-                                                                            (context,
-                                                                            x) {
-                                                                          return Text(
-                                                                              "${receipts[i]
-                                                                                  .variants[x]
-                                                                                  .name}");
-                                                                        }),
-                                                                  ),
-
-                                                                ]),
-                                                          )),
-                                                    ),
-                                                    onTap: () async {
-
-                                                     await printReceiptUSB(receipts[i], cashierController.text);
-                                                    },
-                                                  );
-                                                }),
-                                          ),
-                                        ),
-                                      ],
-                                    );
-                                  });
-
-                                },
-                              );
-                            },
-                          ),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          IconButton(
-                              onPressed: () {
-                                if (pageNumber == 1) {
-                                  return;
-                                } else {
-                                  pageNumber -= 1;
-                                  setState(() {});
-                                }
-                              },
-                              icon: Icon(Icons.arrow_left)),
-                          SizedBox(width: 5),
-                          Text("$pageNumber"),
-                          SizedBox(width: 5),
-                          IconButton(
-                              onPressed: () {
-                                pageNumber += 1;
-                                setState(() {});
-                              },
-                              icon: Icon(Icons.arrow_right)),
-                        ],
-                      )
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      IconButton(
+                          onPressed: () {
+                            if (pageNumber == 1) return;
+                            pageNumber -= 1;
+                            _rebuildStream();
+                            setState(() {});
+                          },
+                          icon: const Icon(Icons.arrow_left)),
+                      const SizedBox(width: 5),
+                      Text("$pageNumber"),
+                      const SizedBox(width: 5),
+                      IconButton(
+                          onPressed: () {
+                            pageNumber += 1;
+                            _rebuildStream();
+                            setState(() {});
+                          },
+                          icon: const Icon(Icons.arrow_right)),
                     ],
-                  );
-                },
-              ) : Center(
-                child: Container(
-                    height: 50,
-                    width: 50,
-                    child: CircularProgressIndicator()),
+                  ),
+                ],
               );
-          },
+            },
           ),
         ),
       ),
     );
   }
 
-  Future getOutlets() async {
-    try {
-      final uri = Uri.parse(
-          'https://myshop.dealpos.com/api/v3/Outlet'
-      ).replace(queryParameters: {
-        'Access': 'All',
-        'Suspended': 'false',
-      });
+  Widget _buildControls() {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        spacing: 10,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          SizedBox(
+            height: 50,
+            width: 140,
+            child: TextField(
+              decoration: const InputDecoration(hintText: 'Cashier Name'),
+              controller: cashierController,
+              maxLength: 15,
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final date = await showRangePickerDialog(
+                context: context,
+                minDate: DateTime(2021, 1, 1),
+                maxDate: DateTime(2050, 12, 31),
+              );
+              if (date != null) {
+                startTime = date.start;
+                endTime = date.end;
+                _rebuildStream();
+                setState(() {});
+              }
+            },
+            child: Text(
+                "${DateFormat.yMMMMd().format(startTime)} - ${DateFormat.yMMMMd().format(endTime)}"),
+          ),
+          ElevatedButton(
+            onPressed: _showPrinterDialog,
+            child: Text(selectedUsb == null ? "Select Printer" : selectedUsb!.name),
+          ),
+          TextButton(
+            onPressed: _toggleSort,
+            child: Text(showUnprinted ? "Sort: To Print" : "Sort: All"),
+          ),
+          TextButton(
+            onPressed: _toggleAutoPrint,
+            child: Text("Autoprint: ${autoPrintOn ? "On" : "Off"}"),
+          ),
+        ],
+      ),
+    );
+  }
 
-      final response = await http.get(
-        uri,
+  Widget _buildReceiptList(List<Receipt> receipts) {
+    return SizedBox(
+      height: 600,
+      width: 500,
+      child: Padding(
+        padding: const EdgeInsets.all(30.0),
+        child: receipts.isEmpty
+            ? const Center(
+            child: Text("No invoice to print",
+                style: TextStyle(color: Colors.grey)))
+            : ListView.builder(
+          itemCount: receipts.length,
+          itemBuilder: (context, i) {
+            final r = receipts[i];
+            return InkWell(
+              onTap: () async {
+                await printReceiptUSB(r, cashierController.text);
+              },
+              child: Card(
+                child: SizedBox(
+                  height: 120 + (20 * r.variants.length.toDouble()),
+                  child: Padding(
+                    padding: const EdgeInsets.all(10.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text("${r.dateFormatted}",
+                            style: const TextStyle(
+                                fontWeight: FontWeight.bold)),
+                        Text("S.I#: ${r.salesInvoiceNumber}"),
+                        const Text("Items:"),
+                        SizedBox(
+                          height: 20 * r.variants.length.toDouble(),
+                          child: ListView.builder(
+                            itemCount: r.variants.length,
+                            itemBuilder: (context, x) =>
+                                Text("${r.variants[x].name}"),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  // ─────────────────────────────────────────────
+  // Dialogs
+  // ─────────────────────────────────────────────
+
+  void _showChangeAdminPin() {
+    final oldPass = TextEditingController();
+    final newPass = TextEditingController();
+    final newPassConfirm = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        content: SizedBox(
+          height: 150,
+          width: 200,
+          child: Column(
+            children: [
+              TextField(
+                  decoration: const InputDecoration(hintText: 'Old PIN'),
+                  controller: oldPass),
+              TextField(
+                  obscureText: true,
+                  decoration: const InputDecoration(hintText: 'New PIN'),
+                  controller: newPass),
+              TextField(
+                  obscureText: true,
+                  decoration: const InputDecoration(hintText: 'Confirm new PIN'),
+                  controller: newPassConfirm),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              if (oldPass.text == await getAdminPIN()) {
+                if (newPassConfirm.text == newPass.text) {
+                  await setAdminPIN(newPass.text);
+                  _snack("PIN Changed");
+                  if (dialogContext.mounted) Navigator.pop(dialogContext);
+                } else {
+                  _snack("New PIN does not match.");
+                }
+              } else {
+                _snack("Old PIN Incorrect");
+              }
+            },
+            child: const Text("Reset"),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showPrinterDialog() {
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        content: SizedBox(
+          height: 400,
+          width: 400,
+          child: ListView.builder(
+            itemCount: usbDevices.length,
+            itemBuilder: (context, i) {
+              return ListTile(
+                title: Text(usbDevices[i].name),
+                onTap: () async {
+                  await selectPrinter(usbDevices[i]);
+                  if (mounted) setState(() {});
+                  _snack("Connected to ${usbDevices[i].name}");
+                  if (dialogContext.mounted) Navigator.pop(dialogContext);
+                },
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _toggleSort() {
+    // Going back to "To Print" needs no PIN.
+    if (!showUnprinted) {
+      showUnprinted = true;
+      _rebuildStream();
+      setState(() {});
+      return;
+    }
+
+    // Showing all receipts needs the admin PIN.
+    final pass = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        content: SizedBox(
+          height: 80,
+          width: 120,
+          child: Column(
+            children: [
+              TextField(
+                decoration: const InputDecoration(hintText: 'Admin Password'),
+                obscureText: true,
+                controller: pass,
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              if (pass.text == await getAdminPIN()) {
+                showUnprinted = false;
+                _rebuildStream();
+                if (mounted) setState(() {});
+                if (dialogContext.mounted) Navigator.pop(dialogContext);
+              } else {
+                _snack("PIN Incorrect");
+              }
+            },
+            child: const Text("Submit"),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _toggleAutoPrint() {
+    final current = autoPrintOn;
+    final pass = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        content: SizedBox(
+          height: 100,
+          width: 100,
+          child: Column(
+            children: [
+              TextField(
+                obscureText: true,
+                controller: pass,
+                decoration: const InputDecoration(hintText: 'Enter Admin Pin'),
+              ),
+              Text(current == false
+                  ? "Ensure all receipts are printed before changing this setting."
+                  : ""),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              if (pass.text == await getAdminPIN()) {
+                await setAutoPrint(!current);
+                _snack("Autoprint: ${!current ? "On" : "Off"}");
+                if (dialogContext.mounted) Navigator.pop(dialogContext);
+                if (mounted) setState(() {});
+              } else {
+                _snack("PIN Incorrect");
+              }
+            },
+            child: const Text("Submit"),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ─────────────────────────────────────────────
+  // API
+  // ─────────────────────────────────────────────
+
+  Future<List<Receipt>> generateInvoice(
+      int page, String outletName, DateTime startTime, DateTime endTime) async {
+    try {
+      final response = await http.post(
+        Uri.parse("https://myshop.dealpos.com/api/v3/Report"),
         headers: {
-          'Authorization': 'Bearer ${widget.token}',
-          'Accept': 'application/json',
+          "Content-Type": "application/json",
+          "Authorization": "Bearer ${widget.token}",
         },
+        body: jsonEncode({
+          "Outlet": outletName,
+          "From": startTime.toIso8601String(),
+          "To": endTime.toIso8601String(),
+          "PageNumber": "$page",
+          "PageSize": "10",
+        }),
       );
 
-      print(response.statusCode);
+      if (response.statusCode == 429) {
+        // Rate limited: keep showing the last list and slow down.
+        _rateLimited = true;
+        debugPrint("429 rate limited - backing off to ${backoffSeconds}s");
+        return _lastReceipts;
+      }
+      _rateLimited = false;
 
-      final dynamic data = await jsonDecode(response.body);
+      if (response.statusCode != 200) {
+        debugPrint("Report failed: ${response.statusCode}");
+        return _lastReceipts;
+      }
 
+      final data = jsonDecode(response.body);
+      final jsonData = data is Map ? data["Data"] : null;
 
-      return data;
-    } catch (e) {
-      print(e);
-    }
-  }
-
-
-  Stream<List<Receipt>> generateInvoiceStream(
-      int page,
-      String outletName,
-      DateTime startTime,
-      DateTime endTime,
-      ) {
-    return Stream.periodic(Duration(seconds: 4))
-        .asyncMap((_) async => await generateInvoice(page, outletName, startTime, endTime));
-  }
-
-  Future<List<Receipt>> generateInvoice(int page, String outletName, DateTime startTime,
-      DateTime endTime) async {
-
-    printCount = 0;
-
-    try {
-      final uri = Uri.parse("https://myshop.dealpos.com/api/v3/Report");
-
-      final headers = {
-        "Content-Type": "application/json",
-        "Authorization": "Bearer ${widget.token}"
-      };
-
-      final body = jsonEncode({
-        "Outlet": "$outletName",
-        "From": startTime.toIso8601String(),
-        "To": endTime.toIso8601String(),
-        "PageNumber": "$page",
-        "PageSize": "10"
-      });
-
-      final request = await http.post(uri, headers: headers, body: body);
-      final dynamic data = await jsonDecode(request.body);
-
-      final jsonData = data["Data"];
-
-      if (jsonData == null || jsonData is! List) {
-        print("Data is null or not a list");
+      if (jsonData is! List) {
+        _lastReceipts = [];
         return [];
       }
 
-
-      List<Receipt> receipts =
-      jsonData.map((e) {
-        return Receipt.fromJSON(e);
-      }).toList();
-
-      receipts.sort((a, b) =>
-          DateTime.parse(b.date.toString())
-              .compareTo(DateTime.parse(a.date.toString())));
-
-      if (showUnprinted == true) {
-        final toRemove = <Receipt>[];
-
-        for (final e in receipts) {
-          if (isAlreadyPrinted(e.salesInvoiceNumber)) {
-            toRemove.add(e);
-          } else {
-
-            if (await getAutoPrint() == true) {
-              await printReceiptUSB(e, cashierController.text);
-              printCount++;
-            }
-          }
+      // Parse each receipt on its own so one bad one doesn't kill the list.
+      final receipts = <Receipt>[];
+      for (final e in jsonData) {
+        try {
+          receipts.add(Receipt.fromJSON(e));
+        } catch (err) {
+          debugPrint("Skipped bad receipt: $err");
         }
-
-        receipts.removeWhere((e) => toRemove.contains(e));
       }
 
-      if (printCount != 0) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Printed $printCount receipts")));
+      final epoch = DateTime.fromMillisecondsSinceEpoch(0);
+      receipts.sort((a, b) => (DateTime.tryParse(b.date.toString()) ?? epoch)
+          .compareTo(DateTime.tryParse(a.date.toString()) ?? epoch));
+
+      if (showUnprinted) {
+        receipts.removeWhere((r) => isAlreadyPrinted(r.salesInvoiceNumber));
+
+        if (autoPrintOn) {
+          int printCount = 0;
+          for (final r in List<Receipt>.from(receipts)) {
+            final ok =
+            await printReceiptUSB(r, cashierController.text, quiet: true);
+            if (ok) printCount++;
+          }
+          receipts.removeWhere((r) => isAlreadyPrinted(r.salesInvoiceNumber));
+          if (printCount != 0) _snack("Printed $printCount receipts");
+        }
       }
 
+      _lastReceipts = receipts;
       return receipts;
-
     } catch (e) {
-      print(e);
-      return [];
+      debugPrint("generateInvoice error: $e");
+      return _lastReceipts;
     }
-
-
   }
 
-
+  /// Total tender amount across all payments, or null if unavailable.
   Future<String?> getPaymentNote(String invoiceId) async {
+    if (invoiceId.trim().isEmpty) return null;
+
     try {
+      final response = await http.get(
+        Uri.parse("https://myshop.dealpos.com/api/v3/Invoice/ID")
+            .replace(queryParameters: {"ID": invoiceId.trim()}),
+        headers: {
+          "Authorization": "Bearer ${widget.token.trim()}",
+          "Accept": "application/json",
+        },
+      );
 
-
-      final response = await http.get(Uri.parse(
-        "https://myshop.dealpos.com/api/v3/Invoice/ID?ID",
-      ).replace(queryParameters: {
-        "ID": invoiceId.trim(),
-      }), headers: {
-        "Authorization": "Bearer ${widget.token.trim()}",
-        "Accept": "application/json",
-      },);
-
+      if (response.statusCode == 429) {
+        _rateLimited = true;
+        return null;
+      }
       if (response.statusCode != 200) {
-        print("Request failed: ${response.statusCode}");
+        debugPrint("Invoice request failed: ${response.statusCode}");
         return null;
       }
 
       final data = jsonDecode(response.body);
+      final pays = data is Map ? data['Payments'] : null;
+      if (pays is! List || pays.isEmpty) return null;
 
-
-      return data['Payments'][0]['BuyerPaidAmount'].toString();
-
+      double total = 0;
+      for (final p in pays) {
+        if (p is! Map) continue;
+        final v = p['BuyerPaidAmount'] ?? p['Amount'];
+        total += v is num ? v.toDouble() : (double.tryParse('$v') ?? 0);
+      }
+      return total > 0 ? total.toStringAsFixed(2) : null;
     } catch (e) {
-      print("Error: $e");
+      debugPrint("getPaymentNote error: $e");
       return null;
     }
   }
 
-  printReceiptUSB(Receipt receipt, String cashier) async {
+  /// Tender amount with fallbacks: invoice payments -> report payment -> gross.
+  Future<String> _tenderAmount(Receipt receipt) async {
+    final note = await getPaymentNote(receipt.invoiceID.toString());
+    if (note != null) return note;
 
-
-
-    if (selectedUsb == null) {
-      return;
-    } else {
-
-
-      final buyerPaidAmount = await getPaymentNote(receipt.invoiceID);
-
-
-      final bytes = await generateReceipt(receipt, cashier, buyerPaidAmount!);
-
-
-
-      if (selectedUsb!.name.toString().toUpperCase() == await getDesignatedPrinter()) {
-        final result = await printerManager.send(
-          type: PrinterType.usb,
-          bytes: bytes,
-        );
-
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Receipt Printed")));
-        savePrinted(receipt.salesInvoiceNumber);
-        setState(() {});
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Please Select Only Designated Printer")));
-      }
-
-    }
-
-
+    final amt = receipt.paymentAmount is num
+        ? (receipt.paymentAmount as num).toDouble()
+        : 0.0;
+    final gross =
+    receipt.gross is num ? (receipt.gross as num).toDouble() : 0.0;
+    return (amt > 0 ? amt : gross).toStringAsFixed(2);
   }
 
+  // ─────────────────────────────────────────────
+  // Printing
+  // ─────────────────────────────────────────────
+
+  /// Returns true if the receipt was sent to the printer.
+  /// [quiet] = true for autoprint (no per-receipt snackbars).
+  Future<bool> printReceiptUSB(Receipt receipt, String cashier,
+      {bool quiet = false}) async {
+    if (selectedUsb == null) {
+      if (!quiet) _snack("Select a printer first");
+      return false;
+    }
+
+    // Check the printer BEFORE calling the API, so a wrong printer
+    // doesn't burn API calls every poll.
+    final designated = (await getDesignatedPrinter()).toString().toUpperCase();
+    if (selectedUsb!.name.toString().toUpperCase() != designated) {
+      if (!quiet) _snack("Please Select Only Designated Printer");
+      return false;
+    }
+
+    try {
+      final paid = await _tenderAmount(receipt);
+      final bytes = await generateReceipt(receipt, cashier, paid);
+
+      await printerManager.send(type: PrinterType.usb, bytes: bytes);
+
+      savePrinted(receipt.salesInvoiceNumber);
+      if (!quiet) {
+        _snack("Receipt Printed");
+        if (mounted) setState(() {});
+      }
+      return true;
+    } catch (e) {
+      debugPrint("Print failed: $e");
+      if (!quiet) _snack("Print failed: $e");
+      return false;
+    }
+  }
 
   Future<void> printReceiptBT(Receipt receipt, String cashier) async {
-    bool conecctionStatus = await PrintBluetoothThermal.connectionStatus;
-    if (conecctionStatus) {
+    final bool connectionStatus = await PrintBluetoothThermal.connectionStatus;
+    if (!connectionStatus) {
+      _snack("Ensure Bluetooth is turned on and paired with Printer");
+      return;
+    }
 
-      final buyerPaidAmount = await getPaymentNote(receipt.invoiceID);
-      List<int> ticket = await generateReceipt(receipt, cashier, buyerPaidAmount!);
-      final result = await PrintBluetoothThermal.writeBytes(ticket);
+    final paid = await _tenderAmount(receipt);
+    final List<int> ticket = await generateReceipt(receipt, cashier, paid);
+    final result = await PrintBluetoothThermal.writeBytes(ticket);
 
-      if (result == true) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Receipt Printed")));
-        savePrinted(receipt.salesInvoiceNumber);
-        setState(() {});
-      }
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Ensure Bluetooth is turned on and paired with Printer")));
+    if (result == true) {
+      _snack("Receipt Printed");
+      savePrinted(receipt.salesInvoiceNumber);
+      if (mounted) setState(() {});
     }
   }
 
-
-  Future<List<int>> generateReceipt(Receipt receipt, String cashier, String buyerPaidAmount) async {
+  Future<List<int>> generateReceipt(
+      Receipt receipt, String cashier, String buyerPaidAmount) async {
     List<int> bytes = [];
 
     final profile = await CapabilityProfile.load();
     final generator = Generator(PaperSize.mm72, profile);
+
+    final double gross =
+    receipt.gross is num ? (receipt.gross as num).toDouble() : 0.0;
+    final double paid = double.tryParse(buyerPaidAmount) ?? gross;
 
     // ---------------------------------
     // HARD RESET (clears everything)
@@ -729,47 +694,32 @@ class _HomeScreenState extends State<HomeScreen> {
     const int rightWidth = 10;
 
     String twoCol(String left, String right) {
-      if (left.length > leftWidth) {
-        left = left.substring(0, leftWidth);
-      }
-      if (right.length > rightWidth) {
-        right = right.substring(0, rightWidth);
-      }
-
-      return left.padRight(leftWidth) +
-          right.padLeft(rightWidth);
+      if (left.length > leftWidth) left = left.substring(0, leftWidth);
+      if (right.length > rightWidth) right = right.substring(0, rightWidth);
+      return left.padRight(leftWidth) + right.padLeft(rightWidth);
     }
 
-    PosStyles normal = PosStyles(
-      align: PosAlign.left,
-      fontType: PosFontType.fontB,
-    );
-
-    PosStyles right = PosStyles(
-      align: PosAlign.right,
-      fontType: PosFontType.fontB,
-    );
-
-    PosStyles center = PosStyles(
-      align: PosAlign.center,
-      fontType: PosFontType.fontB,
-    );
-
-    PosStyles boldCenter = PosStyles(
-      align: PosAlign.center,
-      bold: true,
-      fontType: PosFontType.fontB,
-    );
+    const normal = PosStyles(align: PosAlign.left, fontType: PosFontType.fontB);
+    const center =
+    PosStyles(align: PosAlign.center, fontType: PosFontType.fontB);
+    const boldCenter = PosStyles(
+        align: PosAlign.center, bold: true, fontType: PosFontType.fontB);
 
     // ---------------------------------
     // HEADER
     // ---------------------------------
     bytes += generator.text('YBS SHOPWORLD, INC.', styles: boldCenter);
     bytes += generator.text('DONASCO ST. BAG-ONG LUNGSOD,', styles: center);
-    bytes += generator.text('TANDAG CITY, SURGAO DEL SUR', styles: center);
+    bytes += generator.text('TANDAG CITY, SURIGAO DEL SUR', styles: center);
     bytes += generator.text('VAT REG TIN: 430-923-946-000', styles: center);
-    bytes += generator.text('MIN: 221025020038061', styles: center);
-    bytes += generator.text('SERIAL NO: 50026B7783F19B54', styles: center);
+    bytes += generator.text('MIN: 22030216030993690', styles: center);
+    bytes += generator.text('SERIAL NO: 30055796266', styles: center);
+
+    // MIN CIGAR: 23072708254599051
+    // SN CIGAR: 50026B7381DB1AEF
+
+    // MIN WS: 22030216030993690
+    // SN WS: 30055796266
 
     bytes += generator.emptyLines(1);
     bytes += generator.text('OFFICIAL RECEIPT', styles: center);
@@ -800,24 +750,28 @@ class _HomeScreenState extends State<HomeScreen> {
     // ITEMS
     // ---------------------------------
     double totalQty = 0.00;
-    
-    for (var product in receipt.variants) {
-      String name = product.name ?? '';
 
-      // Trim product name safely to full width (38)
+    for (var product in receipt.variants) {
+      String name = (product.name ?? '').toString();
+
+      // Trim product name safely to full width (40)
       if (name.length > (leftWidth + rightWidth)) {
         name = name.substring(0, leftWidth + rightWidth);
       }
 
       bytes += generator.text(name, styles: normal);
-      
-      totalQty += product.quantity;
 
-      double total = product.price.toDouble() * product.quantity.toDouble();
+      final double price =
+      product.price is num ? (product.price as num).toDouble() : 0.0;
+      final double qty =
+      product.quantity is num ? (product.quantity as num).toDouble() : 0.0;
+
+      totalQty += qty;
+      final double total = price * qty;
 
       bytes += generator.text(
         twoCol(
-          "    ${product.price.toStringAsFixed(2)} x ${product.quantity.toStringAsFixed(2)}",
+          "    ${price.toStringAsFixed(2)} x ${qty.toStringAsFixed(2)}",
           "${total.toStringAsFixed(2)} V",
         ),
         styles: normal,
@@ -832,51 +786,22 @@ class _HomeScreenState extends State<HomeScreen> {
     // ---------------------------------
     // TOTALS
     // ---------------------------------
+    bytes += generator.text(twoCol('TOTAL AMOUNT:', gross.toStringAsFixed(2)),
+        styles: normal);
+    bytes += generator.text(twoCol('TENDER AMOUNT:', paid.toStringAsFixed(2)),
+        styles: normal);
     bytes += generator.text(
-      twoCol('TOTAL AMOUNT:', receipt.gross.toStringAsFixed(2)),
-      styles: normal,
-    );
-
+        twoCol('CHANGE AMOUNT:', (paid - gross).toStringAsFixed(2)),
+        styles: normal);
+    bytes += generator.text(twoCol("", "---------"), styles: normal);
     bytes += generator.text(
-      twoCol('TENDER AMOUNT:', double.parse(buyerPaidAmount).toStringAsFixed(2)),
-      styles: normal,
-    );
-
-    bytes += generator.text(
-      twoCol('CHANGE AMOUNT:', (double.parse(buyerPaidAmount) - receipt.gross).toStringAsFixed(2)),
-      styles: normal,
-    );
-
-    bytes += generator.text(
-      twoCol("", "---------"),
-      styles: normal,
-    );
-
-    bytes += generator.text(
-      twoCol('VATABLE SALES:', receipt.vatableSales),
-      styles: normal,
-    );
-
-    bytes += generator.text(
-      twoCol('VAT AMOUNT:', receipt.vatAmount),
-      styles: normal,
-    );
-
-    bytes += generator.text(
-      twoCol('NON-VATABLE SALES:', '0.00'),
-      styles: normal,
-    );
-
-    bytes += generator.text(
-      twoCol('VAT-EXEMPT SALES:', '0.00'),
-      styles: normal,
-    );
-
-    bytes += generator.text(
-      twoCol('ZERO-RATED SALES:', '0.00'),
-      styles: normal,
-    );
-
+        twoCol('VATABLE SALES:', receipt.vatableSales.toString()),
+        styles: normal);
+    bytes += generator.text(twoCol('VAT AMOUNT:', receipt.vatAmount.toString()),
+        styles: normal);
+    bytes += generator.text(twoCol('NON-VATABLE SALES:', '0.00'), styles: normal);
+    bytes += generator.text(twoCol('VAT-EXEMPT SALES:', '0.00'), styles: normal);
+    bytes += generator.text(twoCol('ZERO-RATED SALES:', '0.00'), styles: normal);
 
     bytes += generator.text('---------------------------------------', styles: center);
 
@@ -905,10 +830,10 @@ class _HomeScreenState extends State<HomeScreen> {
     bytes += generator.emptyLines(6);
 
     // Force line feed
-        bytes += [10];
+    bytes += [10];
 
     // Small print buffer flush (print and feed 1 line)
-        bytes += [27, 100, 1]; // ESC d 1
+    bytes += [27, 100, 1]; // ESC d 1
 
     // ---------------------------------
     // FINAL HARD RESET
@@ -918,28 +843,25 @@ class _HomeScreenState extends State<HomeScreen> {
     return bytes;
   }
 
-  String twoCol(String left, String right) {
-    const int width = 42;
-    int space = width - left.length - right.length;
-    if (space < 1) space = 1;
-    return left + ' ' * space + right;
-  }
-
+  // ─────────────────────────────────────────────
+  // Settings / storage
+  // ─────────────────────────────────────────────
 
   Stream<bool> checkConnection() {
-    return Stream.periodic(Duration(seconds: 30))
-        .asyncMap((_) async {
-      return await PrintBluetoothThermal.connectionStatus;
-    });
+    return Stream.periodic(const Duration(seconds: 30))
+        .asyncMap((_) async => await PrintBluetoothThermal.connectionStatus);
   }
 
-  bool isAlreadyPrinted(String siNumber) {
-    return invoiceBox.containsKey(siNumber);
+  bool isAlreadyPrinted(dynamic siNumber) {
+    return invoiceBox.containsKey(siNumber.toString());
   }
 
-  void savePrinted(String siNumber) {
-    invoiceBox.put(siNumber, true);
+  void savePrinted(dynamic siNumber) {
+    invoiceBox.put(siNumber.toString(), true);
   }
+
+  bool get autoPrintOn =>
+      settingsBox.get('autoPrint', defaultValue: false) == true;
 
   Future<void> setAutoPrint(bool value) async {
     await settingsBox.put('autoPrint', value);
@@ -949,46 +871,38 @@ class _HomeScreenState extends State<HomeScreen> {
     await settingsBox.put('designatedPrinter', printerName);
   }
 
-  getAutoPrint() async {
-    bool isAutoPrintOn = await settingsBox.get('autoPrint', defaultValue: false);
-    return isAutoPrintOn;
+  Future<bool> getAutoPrint() async => autoPrintOn;
+
+  Future<String> getDesignatedPrinter() async {
+    return settingsBox
+        .get('designatedPrinter', defaultValue: "EPSON TM-U220 RECEIPT")
+        .toString();
   }
 
-  getDesignatedPrinter() async {
-
-    String designatedPrinter = await settingsBox.get('designatedPrinter', defaultValue: "EPSON TM-U220 RECEIPT");
-    return designatedPrinter;
+  Future<String> getAdminPIN() async {
+    return settingsBox.get('pinAdmin', defaultValue: "admin").toString();
   }
 
-  getAdminPIN() async {
-    String pin = settingsBox.get('pinAdmin', defaultValue: "admin");
-    return pin;
-  }
-
-  setAdminPIN(String value) async {
+  Future<void> setAdminPIN(String value) async {
     await settingsBox.put('pinAdmin', value);
   }
 
-
-
+  // ─────────────────────────────────────────────
+  // USB printer
+  // ─────────────────────────────────────────────
 
   Future<void> scanUsb() async {
     usbDevices.clear();
 
-    printerManager
-        .discovery(type: PrinterType.usb)
-        .listen((device) async {
-
-
+    printerManager.discovery(type: PrinterType.usb).listen((device) async {
       usbDevices.add(device);
 
-
-      if (device!.name.toString().toUpperCase() == await getDesignatedPrinter()) {
+      if (device.name.toString().toUpperCase() ==
+          (await getDesignatedPrinter()).toUpperCase()) {
         await selectPrinter(device);
+        if (mounted) setState(() {});
       }
     });
-
-
   }
 
   Future<void> selectPrinter(PrinterDevice device) async {
@@ -1004,5 +918,4 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
-
 }

@@ -1,5 +1,12 @@
 import 'package:intl/intl.dart';
-import 'home.dart';
+
+// Safe converters: API values can be null, int, double, or String.
+double _toDouble(dynamic v) {
+  if (v is num) return v.toDouble();
+  return double.tryParse('${v ?? ''}') ?? 0.0;
+}
+
+String _str(dynamic v) => v == null ? '' : v.toString();
 
 class Receipt {
   dynamic salesInvoiceNumber;
@@ -19,41 +26,44 @@ class Receipt {
   dynamic vatableSales;
   dynamic vatAmount;
 
-  Receipt(this.salesInvoiceNumber, this.date, this.cashier, this.tid, this.client, this.transactionType, this.variants, this.payments, this.gross, this.change);
+  Receipt(this.salesInvoiceNumber, this.date, this.cashier, this.tid, this.client,
+      this.transactionType, this.variants, this.payments, this.gross, this.change);
 
   Receipt.fromJSON(dynamic json) {
-    this.salesInvoiceNumber = "00000000${json['Number']}";
-    this.invoiceID = "${json['InvoiceID']}";
-    this.date = json['Created'];
-    this.dateFormatted = DateFormat('MMM d, yyyy h:mm a').format(DateTime.parse(json['Created']));
-    this.client = json['Customer'] == null ? "" : json['Customer']['Name'];
-    this.transactionType = json['Payments'] == null ? "" : json['Payments']["Method"];
+    // "${null}" becomes the literal string "null", so guard it.
+    salesInvoiceNumber = "00000000${_str(json['Number'])}";
 
-    this.gross = json['Gross'];
-    this.taxType = json['TaxType'];
+    // Check the real key in the /Report response. If it's not 'InvoiceID',
+    // this used to become "null" and getPaymentNote() would fail.
+    invoiceID = _str(json['InvoiceID'] ?? json['ID']);
 
+    date = _str(json['Created']);
+    final parsed = DateTime.tryParse(date);
+    dateFormatted = parsed == null ? '' : DateFormat('MMM d, yyyy h:mm a').format(parsed);
 
+    final customer = json['Customer'];
+    client = customer is Map ? _str(customer['Name']) : '';
 
-    List<dynamic> variants = json['Variants'];
-    List<Product> realVariants = [];
-    for (int i = 0; i < variants.length; i++) {
-      realVariants.add(Product.fromJSON(variants[i]));
-    }
+    final pays = json['Payments'];
+    final firstPay = (pays is List && pays.isNotEmpty) ? pays[0] : null;
+    payments = pays;
+    transactionType = firstPay == null ? '' : _str(firstPay['Method']);
+    paymentAmount = firstPay == null ? 0.0 : _toDouble(firstPay['Amount']);
 
+    gross = _toDouble(json['Gross']);
+    taxType = json['TaxType'];
 
-    this.variants = realVariants;
+    final rawVariants = json['Variants'];
+    variants = rawVariants is List
+        ? rawVariants.map<Product>((v) => Product.fromJSON(v)).toList()
+        : <Product>[];
 
-
-    this.vatableSales = (double.parse(gross.toString()) / 1.12).toStringAsFixed(2);
-    this.vatAmount = (double.parse(vatableSales.toString()) * .12).toStringAsFixed(2);
-
-    this.paymentAmount = json['Payments'] == null ? "" : json['Payments'][0]['Amount'];
-
-
-
+    // VAT = gross - vatable so the two always add up to the total exactly.
+    final vatable = double.parse((gross / 1.12).toStringAsFixed(2));
+    vatableSales = vatable.toStringAsFixed(2);
+    vatAmount = (gross - vatable).toStringAsFixed(2);
   }
 }
-
 
 class Product {
   dynamic name;
@@ -65,17 +75,17 @@ class Product {
   dynamic priceOriginal;
   dynamic netPrice;
 
-  Product(this.name, this.code, this.quantity, this.unitQuantity, this.cost, this.price, this.priceOriginal, this.netPrice);
+  Product(this.name, this.code, this.quantity, this.unitQuantity, this.cost, this.price,
+      this.priceOriginal, this.netPrice);
 
   Product.fromJSON(dynamic json) {
-    this.name = json['Name'];
-    this.code = json['Code'];
-    this.quantity = json['Quantity'];
-    this.unitQuantity = json['UnitQuantity'];
-    this.cost = json['Cost'];
-    this.price = json['Price'];
-    this.priceOriginal = json['PriceOriginal'];
-    this.netPrice = json['NetPrice'];
+    name = _str(json['Name']);
+    code = _str(json['Code']);
+    quantity = _toDouble(json['Quantity']);
+    unitQuantity = _toDouble(json['UnitQuantity']);
+    cost = _toDouble(json['Cost']);
+    price = _toDouble(json['Price']);
+    priceOriginal = _toDouble(json['PriceOriginal']);
+    netPrice = _toDouble(json['NetPrice']);
   }
-
 }
